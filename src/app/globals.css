@@ -1,0 +1,84 @@
+@import "tailwindcss";
+
+@theme {
+  --font-orbitron: var(--font-orbitron);
+  --font-inter: var(--font-inter);
+  --font-mono: var(--font-mono);
+
+  --color-background: #000000;
+  --color-surface: #0D0D0D;
+  --color-card: #111111;
+  --color-text-primary: #FFFFFF;
+  --color-text-secondary: #8A8A8A;
+  --color-border: rgba(255, 255, 255, 0.08);
+  --color-accent: #FFFFFF;
+}
+
+:root {
+  --background: #000000;
+  --foreground: #FFFFFF;
+}
+
+body {
+  background-color: #000000;
+  color: #FFFFFF;
+  font-family: var(--font-inter), sans-serif;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #000000;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #1A1A1A;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #333333;
+}
+
+/* Utility Animations */
+.noise-bg {
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+  opacity: 0.02;
+  pointer-events: none;
+}
+
+/* Cinematic Mask Reveal Classes */
+.mask-reveal {
+  mask-image: linear-gradient(to bottom, black 50%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, black 50%, transparent 100%);
+}
+
+.text-glow {
+  text-shadow: 0 0 10px rgba(255, 255, 255, 0.15), 0 0 20px rgba(255, 255, 255, 0.05);
+}
+
+.border-glow {
+  box-shadow: 0 0 15px rgba(255, 255, 255, 0.03);
+}
+
+/* Smooth Scrolling styling */
+html.lenis {
+  height: auto;
+}
+
+.lenis-clean html,
+.lenis-clean body {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.lenis-clean::-webkit-scrollbar {
+  display: none;
+}
