@@ -32,8 +32,8 @@ export default function HeroSection() {
     let height = (canvas.height = window.innerHeight);
     setDimensions({ width, height });
 
-    // Setup coordinates for the blade shimmer centered in the right column on desktop
-    let shimmerX = width >= 1024 ? width * 0.72 : width * 0.5;
+    // Setup coordinates for the blade shimmer centered in the correct column on desktop/tablet/mobile
+    let shimmerX = width >= 1024 ? width * 0.75 : width >= 768 ? width * 0.81 : width * 0.5;
 
     // Drifting Fog Blobs
     const fogBlobs: Array<{
@@ -96,12 +96,35 @@ export default function HeroSection() {
       decay: number;
     }> = [];
 
+    // 2.5. Ground Fog blobs around the base of the sword photo to hide the bottom edge
+    const baseFogBlobs: Array<{
+      x: number;
+      y: number;
+      radius: number;
+      vx: number;
+      opacity: number;
+    }> = [];
+    for (let i = 0; i < 8; i++) {
+      baseFogBlobs.push({
+        x: shimmerX + (Math.random() - 0.5) * 160,
+        y: height * 0.69 + (Math.random() - 0.5) * 50,
+        radius: 110 + Math.random() * 70,
+        vx: 0.03 + Math.random() * 0.05, // drift slowly
+        opacity: 0.08 + Math.random() * 0.06, // denser opacity to blend the image border
+      });
+    }
+
     const handleResize = () => {
       if (!canvas) return;
       width = canvas.width = window.innerWidth;
       height = canvas.height = window.innerHeight;
       setDimensions({ width, height });
-      shimmerX = width >= 1024 ? width * 0.72 : width * 0.5;
+      shimmerX = width >= 1024 ? width * 0.75 : width >= 768 ? width * 0.81 : width * 0.5;
+      
+      baseFogBlobs.forEach((fog) => {
+        fog.x = shimmerX + (Math.random() - 0.5) * 160;
+        fog.y = height * 0.69 + (Math.random() - 0.5) * 50;
+      });
     };
     window.addEventListener("resize", handleResize);
 
@@ -142,9 +165,8 @@ export default function HeroSection() {
       ctx.translate(camX, camY);
       ctx.scale(camScale, camScale);
 
-      // Clear Canvas
-      ctx.fillStyle = "#000000";
-      ctx.fillRect(-10, -10, width + 20, height + 20);
+      // Clear Canvas (Transparency Fix)
+      ctx.clearRect(-10, -10, width + 20, height + 20);
 
       // 1. DRAW VOLUMETRIC LIGHT BEAMS
       lightRays.forEach((ray) => {
@@ -179,6 +201,25 @@ export default function HeroSection() {
         const grad = ctx.createRadialGradient(fog.x, fog.y, 5, fog.x, fog.y, fog.radius);
         grad.addColorStop(0, `rgba(100, 100, 100, ${fog.opacity})`);
         grad.addColorStop(0.6, `rgba(50, 50, 50, ${fog.opacity * 0.25})`);
+        grad.addColorStop(1, "rgba(0,0,0,0)");
+        
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(fog.x, fog.y, fog.radius, 0, Math.PI * 2);
+        ctx.fill();
+      });
+
+      // 2.5 DENSE BASE GROUND FOG
+      baseFogBlobs.forEach((fog) => {
+        fog.x += fog.vx;
+        // wrap around the sword base horizontal boundaries
+        if (fog.x - fog.radius > shimmerX + 200) {
+          fog.x = shimmerX - 200 - fog.radius;
+        }
+
+        const grad = ctx.createRadialGradient(fog.x, fog.y, 2, fog.x, fog.y, fog.radius);
+        grad.addColorStop(0, `rgba(80, 80, 80, ${fog.opacity})`);
+        grad.addColorStop(0.6, `rgba(40, 40, 40, ${fog.opacity * 0.3})`);
         grad.addColorStop(1, "rgba(0,0,0,0)");
         
         ctx.fillStyle = grad;
@@ -276,10 +317,10 @@ export default function HeroSection() {
       const basePulse = 0.12 + Math.sin(t * 1.5) * 0.04;
       const baseGlow = ctx.createRadialGradient(
         shimmerX,
-        height * 0.58, // approximate base center
+        height * 0.69, // Center base glow on actual soil entry point (y = 0.69 * height)
         10,
         shimmerX,
-        height * 0.58,
+        height * 0.69,
         140
       );
       baseGlow.addColorStop(0, `rgba(255, 255, 255, ${basePulse})`);
@@ -287,7 +328,7 @@ export default function HeroSection() {
       baseGlow.addColorStop(1, "rgba(255, 255, 255, 0)");
       ctx.fillStyle = baseGlow;
       ctx.beginPath();
-      ctx.arc(shimmerX, height * 0.58, 140, 0, Math.PI * 2);
+      ctx.arc(shimmerX, height * 0.69, 140, 0, Math.PI * 2);
       ctx.fill();
 
       ctx.restore();
@@ -340,9 +381,9 @@ export default function HeroSection() {
       </div>
 
       {/* 2. THE EMBEDDED SWORD PHOTOGRAPH AS CENTERPIECE (Desktop: Right-centered, Mobile/Tablet: Centered background) */}
-      <div className="absolute inset-0 z-0 pointer-events-none flex items-center justify-center lg:justify-end">
+      <div className="absolute inset-0 z-0 pointer-events-none flex items-center justify-center md:justify-end">
         <div 
-          className="relative h-full w-full lg:w-[45vw] aspect-[9/16] lg:mr-[5%] opacity-20 lg:opacity-100 transition-opacity duration-1000"
+          className="relative h-[95vh] w-full md:w-[32vw] lg:w-[38vw] aspect-[9/16] md:mr-[4%] lg:mr-[8%] opacity-20 md:opacity-100 transition-opacity duration-1000"
         >
           {/* Main Visual Asset: next/image priority loaded */}
           <Image 
@@ -364,7 +405,7 @@ export default function HeroSection() {
           <div className="absolute bottom-0 left-0 right-0 h-40 bg-gradient-to-t from-black to-transparent z-10" />
           
           {/* Radial overlay vignette for mobile center blending */}
-          <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(0,0,0,0)_20%,#000000_82%)] lg:bg-[radial-gradient(ellipse_at_center,rgba(0,0,0,0)_40%,#000000_90%)] z-10" />
+          <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(0,0,0,0)_20%,#000000_82%)] md:bg-[radial-gradient(ellipse_at_center,rgba(0,0,0,0)_40%,#000000_90%)] z-10" />
           <div className="absolute inset-0 bg-black/10 z-10 pointer-events-none" />
         </div>
       </div>
@@ -420,12 +461,12 @@ export default function HeroSection() {
 
         {/* Text Block - Grid alignment on desktop */}
         <div className="flex-grow flex items-center w-full">
-          <div className="grid grid-cols-1 lg:grid-cols-12 w-full gap-8">
+          <div className="grid grid-cols-1 md:grid-cols-12 w-full gap-8 md:gap-12">
             <motion.div
               variants={containerVariants}
               initial="hidden"
               animate="visible"
-              className="lg:col-span-7 flex flex-col justify-center text-center lg:text-left max-w-2xl mx-auto lg:mx-0"
+              className="md:col-span-7 flex flex-col justify-center text-center md:text-left max-w-2xl mx-auto md:mx-0 relative z-20"
             >
               <motion.span 
                 variants={itemVariants}
