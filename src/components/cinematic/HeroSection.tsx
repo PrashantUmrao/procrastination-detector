@@ -391,6 +391,7 @@ export default function HeroSection() {
             alt="Embedded Sword Piece" 
             fill 
             priority
+            sizes="(max-width: 768px) 100vw, (max-width: 1024px) 32vw, 38vw"
             className="object-cover lg:object-contain filter grayscale contrast-[1.12] brightness-[0.58]"
           />
           
