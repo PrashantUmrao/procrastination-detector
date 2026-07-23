@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState, useRef } from "react";
+import Image from "next/image";
 import { motion, useScroll, useTransform, motionValue, MotionValue } from "framer-motion";
 import { ArrowRight, Lock, Eye } from "lucide-react";
 import { useUser, SignInButton } from "@/components/providers/AuthProvider";
@@ -21,7 +22,7 @@ const CHAPTERS: Chapter[] = [
     title: "The Enemy",
     subtitle: "THE DECEPTIVE REFUGE",
     description: "Procrastination is not a failure of time management. It is a defense mechanism. An emotional avoidance strategy where the ego chooses immediate comfort over long-term realization, trading future regret for temporary relief.",
-    imageUrl: "https://images.unsplash.com/photo-1509198397868-475647b2a1e5?q=80&w=600&auto=format&fit=crop",
+    imageUrl: "/the-enemy-suit.jpg",
   },
   {
     id: "potential",
@@ -29,7 +30,7 @@ const CHAPTERS: Chapter[] = [
     title: "Your Potential",
     subtitle: "THE UNEXPLORED PATH",
     description: "Deep within you lies an unwritten legacy. Every hour spent avoiding the work is an hour you delete from your potential. The gap between who you are and who you could be is the cost of your procrastination.",
-    imageUrl: "https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?q=80&w=600&auto=format&fit=crop",
+    imageUrl: "/potential.jpg",
   },
   {
     id: "fear",
@@ -37,7 +38,7 @@ const CHAPTERS: Chapter[] = [
     title: "Face Your Fear",
     subtitle: "THE CORE OBSACLE",
     description: "We do not run from the task itself. We run from the judgment, the fear of failure, or the terrifying possibility of realizing our own limits. Facing the fear neutralizes the control it holds over your schedule.",
-    imageUrl: "https://images.unsplash.com/photo-1518005020951-eccb494ad742?q=80&w=600&auto=format&fit=crop",
+    imageUrl: "/fear.jpg",
   },
   {
     id: "ego",
@@ -182,12 +183,18 @@ export default function ScrollStory({ onEnterDashboard }: { onEnterDashboard: ()
                   <div className="absolute inset-0 noise-bg opacity-[0.03] z-20 pointer-events-none" />
 
                   {/* High contrast black-and-white images */}
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
+                  <Image
                     src={ch.imageUrl}
                     alt={ch.title}
-                    className="w-full h-full object-cover filter grayscale contrast-[1.25] brightness-[0.7] transition-transform duration-1000 group-hover:scale-105"
-                    loading="lazy"
+                    fill
+                    sizes="(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 33vw"
+                    className={`w-full h-full object-cover filter grayscale contrast-[1.25] brightness-[0.7] transition-transform duration-1000 group-hover:scale-105 ${
+                      ch.id === "enemy" ? "object-[center_35%]" : ""
+                    } ${
+                      ch.id === "potential" ? "object-[center_40%]" : ""
+                    } ${
+                      ch.id === "fear" ? "object-[center_35%]" : ""
+                    }`}
                   />
                 </div>
 

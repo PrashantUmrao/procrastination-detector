@@ -370,6 +370,19 @@ export default function HeroSection() {
     },
   };
 
+  const signatureVariants = {
+    hidden: { opacity: 0, y: 9, filter: "blur(4px)" },
+    visible: {
+      opacity: 1,
+      y: 0,
+      filter: "blur(0px)",
+      transition: {
+        duration: 0.6,
+        ease: "easeOut" as const,
+      },
+    },
+  };
+
   return (
     <div 
       ref={containerRef}
@@ -483,15 +496,38 @@ export default function HeroSection() {
                 PROCRASTINATION DETECTOR
               </motion.h1>
               
-              <motion.p 
-                variants={itemVariants}
-                className="font-inter italic text-xs sm:text-sm tracking-widest text-white/55 mb-6"
-              >
-                &quot;The End of &apos;I&apos;ll Do It Later.&apos;&quot;
-              </motion.p>
+              <div className="flex flex-col items-start w-fit self-center md:self-start text-left mb-6">
+                <motion.p 
+                  variants={itemVariants}
+                  transition={{
+                    duration: 1.2,
+                    ease: [0.16, 1, 0.3, 1],
+                    delay: 0.42
+                  }}
+                  className="font-inter italic text-xs sm:text-sm tracking-widest text-white/55 mb-[11px]"
+                >
+                  &quot;The End of &apos;I&apos;ll Do It Later.&apos;&quot;
+                </motion.p>
+                <motion.p
+                  variants={signatureVariants}
+                  transition={{
+                    duration: 0.6,
+                    ease: "easeOut",
+                    delay: 0.58
+                  }}
+                  className="font-inter italic text-[13px] sm:text-[14px] md:text-[15px] font-medium tracking-[0.08em] text-[rgba(255,255,255,0.55)]"
+                >
+                  — Prashant Umrao
+                </motion.p>
+              </div>
               
               <motion.p 
                 variants={itemVariants}
+                transition={{
+                  duration: 1.2,
+                  ease: [0.16, 1, 0.3, 1],
+                  delay: 0.74
+                }}
                 className="font-inter text-[11px] sm:text-xs leading-relaxed tracking-wider text-white/40 mb-10"
               >
                 A cinematic psychological journey translating reflection into combat productivity metrics. Your timeline is locked. Confront the inertia, engage the focus duels, and claim victory over avoidance.
@@ -499,6 +535,11 @@ export default function HeroSection() {
 
               <motion.div 
                 variants={itemVariants}
+                transition={{
+                  duration: 1.2,
+                  ease: [0.16, 1, 0.3, 1],
+                  delay: 0.90
+                }}
                 className="flex flex-col sm:flex-row gap-4 w-full sm:w-fit justify-center lg:justify-start"
               >
                 <button
