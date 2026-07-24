@@ -2,12 +2,14 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import Image from "next/image";
+import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { ArrowRight, LogIn } from "lucide-react";
-import { useUser, SignInButton } from "@/components/providers/AuthProvider";
+import { useUser, SignInButton, UserButton } from "@/components/providers/AuthProvider";
 import { gsap } from "gsap";
 
 export default function HeroSection() {
+  const router = useRouter();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const { isSignedIn } = useUser();
@@ -452,15 +454,22 @@ export default function HeroSection() {
             </a>
             
             {isSignedIn ? (
-              <span className="font-mono text-[9px] text-white/30 tracking-widest uppercase">
-                Identity Verified
-              </span>
+              <UserButton />
             ) : (
-              <SignInButton>
-                <button className="flex items-center gap-1.5 font-orbitron uppercase text-[9px] tracking-widest text-white hover:text-white/80 transition-colors cursor-pointer">
-                  <LogIn className="w-3 h-3" /> Initiate Descent
-                </button>
-              </SignInButton>
+              <>
+                <a
+                  href="/auth?mode=signin"
+                  className="font-orbitron uppercase text-[9px] tracking-widest text-white/50 hover:text-white transition-colors cursor-pointer"
+                >
+                  Sign In
+                </a>
+                <a
+                  href="/auth?mode=signup"
+                  className="font-orbitron uppercase text-[9px] tracking-widest text-white/50 hover:text-white transition-colors cursor-pointer"
+                >
+                  Sign Up
+                </a>
+              </>
             )}
           </motion.div>
 
@@ -544,7 +553,7 @@ export default function HeroSection() {
               >
                 <button
                   onClick={() => {
-                    document.getElementById("chapter-enemy")?.scrollIntoView({ behavior: "smooth" });
+                    router.push("/auth");
                   }}
                   className="group flex items-center justify-center gap-3 px-7 py-3.5 bg-white text-black font-orbitron text-[9px] tracking-[0.25em] uppercase hover:bg-black hover:text-white border border-white hover:border-white/20 transition-all duration-300 shadow-[0_0_15px_rgba(255,255,255,0.06)] active:scale-95 cursor-pointer"
                 >

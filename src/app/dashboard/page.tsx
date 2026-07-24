@@ -4,6 +4,7 @@ import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Lock, ArrowLeft, ShieldAlert } from "lucide-react";
 import { useUser, UserButton, SignInButton } from "@/components/providers/AuthProvider";
+import { motion, AnimatePresence } from "framer-motion";
 
 import FocusTimer from "@/components/dashboard/FocusTimer";
 import HabitTracker from "@/components/dashboard/HabitTracker";
@@ -16,6 +17,9 @@ export default function DashboardPage() {
   const router = useRouter();
   const { isSignedIn, user, isLoaded } = useUser();
   const [currentTime, setCurrentTime] = useState("");
+  const [showWelcome, setShowWelcome] = useState(false);
+  const [isNewUser, setIsNewUser] = useState(false);
+  const [greeting, setGreeting] = useState("WELCOME");
 
   // Update clock in real-time
   useEffect(() => {
@@ -27,10 +31,41 @@ export default function DashboardPage() {
         date.toLocaleTimeString("en-US", { hour12: false })
       );
     };
+    
+    const updateGreeting = () => {
+      const hours = new Date().getHours();
+      if (hours >= 5 && hours < 12) return "Good Morning";
+      if (hours >= 12 && hours < 17) return "Good Afternoon";
+      return "Good Evening";
+    };
+
     updateTime();
+    setGreeting(updateGreeting());
+
     const interval = setInterval(updateTime, 1000);
     return () => clearInterval(interval);
   }, []);
+
+  // Welcome transition overlay session trigger
+  useEffect(() => {
+    if (isSignedIn && user && !sessionStorage.getItem("pd_welcome_shown")) {
+      const createdTime = user.createdAt ? new Date(user.createdAt).getTime() : Date.now();
+      const isNew = Date.now() - createdTime < 45000;
+      setIsNewUser(isNew);
+      setShowWelcome(true);
+      sessionStorage.setItem("pd_welcome_shown", "true");
+    }
+  }, [isSignedIn, !!user]);
+
+  // Welcome transition auto-fadeout timer
+  useEffect(() => {
+    if (showWelcome) {
+      const timer = setTimeout(() => {
+        setShowWelcome(false);
+      }, 1500);
+      return () => clearTimeout(timer);
+    }
+  }, [showWelcome]);
 
   if (!isLoaded) {
     return (
@@ -66,7 +101,7 @@ export default function DashboardPage() {
           <div className="flex flex-col gap-4 w-full">
             <SignInButton>
               <button className="w-full px-6 py-3 bg-white text-black font-orbitron text-xs tracking-widest uppercase hover:bg-black hover:text-white border border-white transition-all duration-300 shadow-[0_0_15px_rgba(255,255,255,0.05)] cursor-pointer">
-                Establish Mock Identity
+                Sign In to Sanctuary
               </button>
             </SignInButton>
 
@@ -93,10 +128,10 @@ export default function DashboardPage() {
           <div className="flex items-center gap-3">
             <button
               onClick={() => router.push("/")}
-              className="p-1 hover:bg-white/5 border border-transparent hover:border-white/10 rounded transition-all mr-2 group cursor-pointer"
+              className="p-1.5 hover:bg-white/5 border border-transparent hover:border-white/10 rounded transition-all mr-2 group cursor-pointer active:scale-95"
               title="Return to Intro"
             >
-              <ArrowLeft className="w-4 h-4 text-white/40 group-hover:text-white" />
+              <ArrowLeft className="w-4 h-4 text-white/40 group-hover:text-white group-hover:-translate-x-[2px] transition-transform duration-300" />
             </button>
             <div className="w-[1px] h-6 bg-white/20 mr-2" />
             <h1 className="font-orbitron uppercase text-xs tracking-[0.3em] font-extrabold text-white text-glow">
@@ -121,16 +156,25 @@ export default function DashboardPage() {
         
         {/* Welcome Section */}
         <section className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 pb-6 border-b border-white/5">
-          <div>
-            <span className="font-mono text-[9px] tracking-widest text-white/30 block mb-1">
-              DESCENT CHAPTER 10 // ACTIVE OPERATION
-            </span>
-            <h2 className="font-orbitron uppercase text-2xl tracking-[0.1em] font-extrabold text-white">
-              WELCOME BACK, {user?.fullName?.toUpperCase() || "WARRIOR"}.
-            </h2>
-            <p className="font-inter italic text-[11px] tracking-wide text-white/40 mt-1">
-              &quot;The enemy is silent. The battle is now.&quot;
-            </p>
+          <div className="flex items-center gap-4.5">
+            {user?.imageUrl && (
+              <img
+                src={user.imageUrl}
+                alt={user.firstName || "Warrior"}
+                className="w-12 h-12 rounded-full border border-white/10 shadow-[0_0_12px_rgba(255,255,255,0.04)] object-cover hover:border-white/20 transition-all duration-300"
+              />
+            )}
+            <div>
+              <span className="font-mono text-[9px] tracking-widest text-white/30 block mb-1">
+                DESCENT CHAPTER 10 <span className="text-white/15">//</span> ACTIVE OPERATION
+              </span>
+              <h2 className="font-orbitron uppercase text-xl sm:text-2xl tracking-[0.08em] font-extrabold text-white leading-tight">
+                {greeting}, <span className="text-glow">{user?.firstName || "WARRIOR"}</span>.
+              </h2>
+              <p className="font-inter font-light italic text-[11px] tracking-wide text-neutral-400 mt-1">
+                &quot;The enemy is silent. The battle is now.&quot;
+              </p>
+            </div>
           </div>
 
           <div className="flex gap-8">
@@ -180,6 +224,39 @@ export default function DashboardPage() {
 
         </section>
       </main>
+
+      <AnimatePresence>
+        {showWelcome && (
+          <motion.div
+            initial={{ opacity: 1 }}
+            exit={{ opacity: 0, filter: "blur(12px)" }}
+            transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
+            className="fixed inset-0 bg-black z-50 flex flex-col items-center justify-center text-center select-none"
+          >
+            {/* Background micro grid element */}
+            <div className="absolute inset-0 noise-bg opacity-[0.015] pointer-events-none" />
+
+            {/* Narrative container */}
+            <motion.div
+              initial={{ opacity: 0, y: 15, filter: "blur(4px)" }}
+              animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+              transition={{ duration: 0.6, ease: "easeOut", delay: 0.1 }}
+              className="max-w-md px-6 flex flex-col items-center gap-2"
+            >
+              <span className="font-mono text-[9px] tracking-[0.4em] text-white/40 uppercase block">
+                IDENTITY VERIFIED
+              </span>
+              <h2 className="font-orbitron uppercase text-2xl sm:text-3xl font-black tracking-[0.25em] text-white text-glow">
+                {isNewUser ? "WELCOME" : "WELCOME BACK"}
+              </h2>
+              <div className="w-8 h-[1px] bg-white/20 my-3" />
+              <p className="font-inter italic text-[11px] tracking-wide text-white/50">
+                {isNewUser ? "Your journey begins now." : "Continue your journey."}
+              </p>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
