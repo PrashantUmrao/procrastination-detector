@@ -46,7 +46,7 @@ const CHAPTERS: Chapter[] = [
     title: "Dismantling Ego",
     subtitle: "THE ARROGANCE OF LATER",
     description: "Believing that 'tomorrow' you will feel more motivated is a delusion. It is the ego asserting control by creating a fictional, superior version of yourself that doesn't exist. Today is all you will ever have.",
-    imageUrl: "https://images.unsplash.com/photo-1544027993-37dbfe43562a?q=80&w=600&auto=format&fit=crop",
+    imageUrl: "/ego.jpg",
   },
   {
     id: "strategy",
@@ -54,7 +54,7 @@ const CHAPTERS: Chapter[] = [
     title: "System Over Will",
     subtitle: "THE METICULOUS DESIGN",
     description: "Willpower is a finite chemical. It decays as the day progresses. The disciplined do not rely on motivation; they design environments where procrastination is friction-heavy and action is default.",
-    imageUrl: "https://images.unsplash.com/photo-1497366216548-37526070297c?q=80&w=600&auto=format&fit=crop",
+    imageUrl: "/sisyphus.jpg",
   },
   {
     id: "reflection",
@@ -62,7 +62,7 @@ const CHAPTERS: Chapter[] = [
     title: "The Reflection",
     subtitle: "TAKING INVENTORY",
     description: "Look at your days with raw, unclouded objectivity. Stop measuring efforts by intentions. Measure them by output. The clock is indifferent to your excuses, ticking steadily towards the end.",
-    imageUrl: "https://images.unsplash.com/photo-1457369804613-52c61a468e7d?q=80&w=600&auto=format&fit=crop",
+    imageUrl: "/reflection-new.jpg",
   },
   {
     id: "battle",
@@ -70,7 +70,7 @@ const CHAPTERS: Chapter[] = [
     title: "The Daily Battle",
     subtitle: "THE CONTINUOUS CLASH",
     description: "Discipline is not a static achievement. It is a recurring battle fought every single morning. Each task is a duel; each completion is a victory that expands your empire of self-governance.",
-    imageUrl: "https://images.unsplash.com/photo-1557672172-298e090bd0f1?q=80&w=600&auto=format&fit=crop",
+    imageUrl: "/battle.jpg",
   },
   {
     id: "victory",
@@ -78,7 +78,7 @@ const CHAPTERS: Chapter[] = [
     title: "State of Flow",
     subtitle: "THE ULTIMATE ASCENT",
     description: "When the friction dissolves and action becomes rhythmic, you enter flow. You are no longer fighting yourself; you are simply creating. The End of 'I'll Do It Later' is the beginning of flow.",
-    imageUrl: "https://images.unsplash.com/photo-1579783900882-c0d3dad7b119?q=80&w=600&auto=format&fit=crop",
+    imageUrl: "/flow.jpg",
   },
   {
     id: "dashboard-lead",
@@ -86,7 +86,7 @@ const CHAPTERS: Chapter[] = [
     title: "The Sanctuary",
     subtitle: "YOUR WEAPONRY DEPLOYED",
     description: "From psychology to utility. Transition from reflection into actions. The Procrastination Detector dashboard is now unlocked. Measure your analytics, track your focus, and build ironclad habits.",
-    imageUrl: "https://images.unsplash.com/photo-1451187580459-43490279c0fa?q=80&w=600&auto=format&fit=crop",
+    imageUrl: "/sanctuary.jpg",
   }
 ];
 
@@ -188,12 +188,26 @@ export default function ScrollStory({ onEnterDashboard }: { onEnterDashboard: ()
                     alt={ch.title}
                     fill
                     sizes="(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 33vw"
-                    className={`w-full h-full object-cover filter grayscale contrast-[1.25] brightness-[0.7] transition-transform duration-1000 group-hover:scale-105 ${
+                    className={`w-full h-full object-cover filter contrast-[1.25] brightness-[0.7] transition-transform duration-1000 group-hover:scale-105 ${
+                      ch.id !== "ego" ? "grayscale" : ""
+                    } ${
                       ch.id === "enemy" ? "object-[center_35%]" : ""
                     } ${
                       ch.id === "potential" ? "object-[center_40%]" : ""
                     } ${
                       ch.id === "fear" ? "object-[center_35%]" : ""
+                    } ${
+                      ch.id === "ego" ? "object-[center_30%]" : ""
+                    } ${
+                      ch.id === "strategy" ? "object-[center_25%]" : ""
+                    } ${
+                      ch.id === "reflection" ? "object-[center_45%]" : ""
+                    } ${
+                      ch.id === "battle" ? "object-[center_45%]" : ""
+                    } ${
+                      ch.id === "dashboard-lead" ? "object-[center_82%]" : ""
+                    } ${
+                      ch.id === "victory" ? "object-[center_50%]" : ""
                     }`}
                   />
                 </div>
