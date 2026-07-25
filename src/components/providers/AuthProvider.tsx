@@ -11,18 +11,6 @@ import {
   UserButton as ClerkUserButton,
 } from "@clerk/nextjs";
 
-interface User {
-  id: string;
-  fullName: string;
-  firstName: string;
-  lastName: string;
-  primaryEmailAddress: { emailAddress: string };
-  imageUrl: string;
-  createdAt?: Date | null;
-  username?: string | null;
-  publicMetadata?: Record<string, any>;
-  unsafeMetadata?: Record<string, any>;
-}
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   return <ClerkProvider afterSignOutUrl="/">{children}</ClerkProvider>;
@@ -82,7 +70,7 @@ export function SignInButton({ children }: { children?: React.ReactNode }) {
   };
 
   if (children) {
-    return React.cloneElement(children as React.ReactElement<any>, {
+    return React.cloneElement(children as React.ReactElement<{ onClick?: React.MouseEventHandler }>, {
       onClick: handleSignIn,
     });
   }
@@ -106,7 +94,7 @@ export function SignOutButton({ children }: { children?: React.ReactNode }) {
   };
 
   if (children) {
-    return React.cloneElement(children as React.ReactElement<any>, {
+    return React.cloneElement(children as React.ReactElement<{ onClick?: React.MouseEventHandler }>, {
       onClick: handleSignOut,
     });
   }

@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { Check, Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
 
 interface Task {
   id: string;
@@ -44,15 +44,18 @@ export default function TaskTimeline() {
   // Load tasks on mount
   useEffect(() => {
     const saved = localStorage.getItem("pd_tasks");
-    if (saved) {
-      try {
-        setTasks(JSON.parse(saved));
-      } catch (e) {
+    const timer = setTimeout(() => {
+      if (saved) {
+        try {
+          setTasks(JSON.parse(saved));
+        } catch {
+          setTasks(DEFAULT_TASKS);
+        }
+      } else {
         setTasks(DEFAULT_TASKS);
       }
-    } else {
-      setTasks(DEFAULT_TASKS);
-    }
+    }, 0);
+    return () => clearTimeout(timer);
   }, []);
 
   const saveTasks = (updatedTasks: Task[]) => {

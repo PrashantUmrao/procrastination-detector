@@ -7,6 +7,10 @@ interface CinematicIntroProps {
   onComplete: () => void;
 }
 
+interface ExtendedAudioContext extends AudioContext {
+  masterGain?: GainNode;
+}
+
 export default function CinematicIntro({ onComplete }: CinematicIntroProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -28,7 +32,7 @@ export default function CinematicIntro({ onComplete }: CinematicIntroProps) {
   const isMutedRef = useRef(true);
   
   // Audio Web Synth refs
-  const audioCtxRef = useRef<AudioContext | null>(null);
+  const audioCtxRef = useRef<ExtendedAudioContext | null>(null);
 
   // GSAP animation values
   const animationState = useRef({
@@ -64,8 +68,8 @@ export default function CinematicIntro({ onComplete }: CinematicIntroProps) {
     if (audioCtxRef.current) return;
 
     try {
-      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
-      const ctx = new AudioContextClass();
+      const AudioContextClass = window.AudioContext || (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      const ctx = new AudioContextClass() as ExtendedAudioContext;
       audioCtxRef.current = ctx;
 
       // Master Gain
@@ -132,7 +136,7 @@ export default function CinematicIntro({ onComplete }: CinematicIntroProps) {
       lfoGain.connect(bandpass.frequency);
       lfo.start();
 
-      (ctx as any).masterGain = masterGain;
+      ctx.masterGain = masterGain;
 
       if (!isMutedRef.current) {
         fadeSoundIn();
@@ -142,25 +146,25 @@ export default function CinematicIntro({ onComplete }: CinematicIntroProps) {
     }
   };
 
-  const fadeSoundIn = () => {
+  function fadeSoundIn() {
     const ctx = audioCtxRef.current;
     if (!ctx) return;
-    const master = (ctx as any).masterGain;
+    const master = ctx.masterGain;
     if (master) {
       master.gain.setValueAtTime(master.gain.value, ctx.currentTime);
       master.gain.linearRampToValueAtTime(0.65, ctx.currentTime + 0.8);
     }
-  };
+  }
 
-  const fadeSoundOut = () => {
+  function fadeSoundOut() {
     const ctx = audioCtxRef.current;
     if (!ctx) return;
-    const master = (ctx as any).masterGain;
+    const master = ctx.masterGain;
     if (master) {
       master.gain.setValueAtTime(master.gain.value, ctx.currentTime);
       master.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.3);
     }
-  };
+  }
 
   const playBladeShimmerSound = () => {
     if (isMutedRef.current || !audioCtxRef.current) return;

@@ -1,22 +1,27 @@
-import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
-
-const isProtectedRoute = createRouteMatcher(["/dashboard(.*)", "/api(.*)"]);
-const isAuthRoute = createRouteMatcher(["/auth(.*)"]);
+import { clerkMiddleware } from "@clerk/nextjs/server";
+import { NextResponse } from "next/server";
 
 export default clerkMiddleware(async (auth, req) => {
   const { userId } = await auth();
+  const { pathname } = req.nextUrl;
   
+  const isProtectedRoute = pathname.startsWith("/dashboard") || pathname.startsWith("/api");
+  const isAuthRoute = pathname.startsWith("/auth");
+
   // If signed in and accessing the auth page, redirect directly to dashboard
-  if (userId && isAuthRoute(req)) {
-    return Response.redirect(new URL("/dashboard", req.url));
+  if (userId && isAuthRoute) {
+    return NextResponse.redirect(new URL("/dashboard", req.url));
   }
-  
+
   // If not signed in and trying to access dashboard or private APIs, handle unauthorized
-  if (!userId && isProtectedRoute(req)) {
-    if (req.nextUrl.pathname.startsWith("/api")) {
-      return new Response("Unauthorized", { status: 401 });
+  if (!userId && isProtectedRoute) {
+    if (pathname.startsWith("/api")) {
+      return new NextResponse(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" }
+      });
     }
-    return Response.redirect(new URL("/auth", req.url));
+    return NextResponse.redirect(new URL("/auth", req.url));
   }
 });
 

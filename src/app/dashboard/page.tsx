@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Lock, ArrowLeft, ShieldAlert } from "lucide-react";
+import { Lock, ArrowLeft } from "lucide-react";
 import { useUser, UserButton, SignInButton } from "@/components/providers/AuthProvider";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -40,10 +40,15 @@ export default function DashboardPage() {
     };
 
     updateTime();
-    setGreeting(updateGreeting());
+    const timer = setTimeout(() => {
+      setGreeting(updateGreeting());
+    }, 0);
 
     const interval = setInterval(updateTime, 1000);
-    return () => clearInterval(interval);
+    return () => {
+      clearTimeout(timer);
+      clearInterval(interval);
+    };
   }, []);
 
   // Welcome transition overlay session trigger
@@ -51,11 +56,14 @@ export default function DashboardPage() {
     if (isSignedIn && user && !sessionStorage.getItem("pd_welcome_shown")) {
       const createdTime = user.createdAt ? new Date(user.createdAt).getTime() : Date.now();
       const isNew = Date.now() - createdTime < 45000;
-      setIsNewUser(isNew);
-      setShowWelcome(true);
+      const timer = setTimeout(() => {
+        setIsNewUser(isNew);
+        setShowWelcome(true);
+      }, 0);
       sessionStorage.setItem("pd_welcome_shown", "true");
+      return () => clearTimeout(timer);
     }
-  }, [isSignedIn, !!user]);
+  }, [isSignedIn, user]);
 
   // Welcome transition auto-fadeout timer
   useEffect(() => {
@@ -166,7 +174,7 @@ export default function DashboardPage() {
             )}
             <div>
               <span className="font-mono text-[9px] tracking-widest text-white/30 block mb-1">
-                DESCENT CHAPTER 10 <span className="text-white/15">//</span> ACTIVE OPERATION
+                DESCENT CHAPTER 10 <span className="text-white/15">{"//"}</span> ACTIVE OPERATION
               </span>
               <h2 className="font-orbitron uppercase text-xl sm:text-2xl tracking-[0.08em] font-extrabold text-white leading-tight">
                 {greeting}, <span className="text-glow">{user?.firstName || "WARRIOR"}</span>.

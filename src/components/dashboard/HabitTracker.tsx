@@ -48,15 +48,18 @@ export default function HabitTracker() {
   // Load habits from localStorage on mount
   useEffect(() => {
     const saved = localStorage.getItem("pd_habits");
-    if (saved) {
-      try {
-        setHabits(JSON.parse(saved));
-      } catch (e) {
+    const timer = setTimeout(() => {
+      if (saved) {
+        try {
+          setHabits(JSON.parse(saved));
+        } catch {
+          setHabits(DEFAULT_HABITS);
+        }
+      } else {
         setHabits(DEFAULT_HABITS);
       }
-    } else {
-      setHabits(DEFAULT_HABITS);
-    }
+    }, 0);
+    return () => clearTimeout(timer);
   }, []);
 
   const saveHabits = (updatedHabits: Habit[]) => {

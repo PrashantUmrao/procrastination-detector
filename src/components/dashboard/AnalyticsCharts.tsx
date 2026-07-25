@@ -13,11 +13,45 @@ const MOCK_DATA = [
   { day: "Sun", focus: 85, procrast: 15 },
 ];
 
+interface TooltipPayloadItem {
+  value: number;
+  payload: {
+    day: string;
+  };
+}
+
+interface CustomTooltipProps {
+  active?: boolean;
+  payload?: TooltipPayloadItem[];
+}
+
+const CustomTooltip = ({ active, payload }: CustomTooltipProps) => {
+  if (active && payload && payload.length) {
+    return (
+      <div className="bg-black border border-white/10 p-3 rounded shadow-[0_0_15px_rgba(0,0,0,0.5)]">
+        <p className="font-orbitron text-[9px] text-white/50 uppercase tracking-widest mb-1.5">
+          {payload[0].payload.day} Battle
+        </p>
+        <div className="flex flex-col gap-1">
+          <span className="font-mono text-xs text-white">
+            FOCUS: {payload[0].value}%
+          </span>
+          <span className="font-mono text-xs text-white/40">
+            AVOID: {payload[1].value}%
+          </span>
+        </div>
+      </div>
+    );
+  }
+  return null;
+};
+
 export default function AnalyticsCharts() {
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    setMounted(true);
+    const timer = setTimeout(() => setMounted(true), 0);
+    return () => clearTimeout(timer);
   }, []);
 
   if (!mounted) {
@@ -30,26 +64,6 @@ export default function AnalyticsCharts() {
     );
   }
 
-  const CustomTooltip = ({ active, payload }: any) => {
-    if (active && payload && payload.length) {
-      return (
-        <div className="bg-black border border-white/10 p-3 rounded shadow-[0_0_15px_rgba(0,0,0,0.5)]">
-          <p className="font-orbitron text-[9px] text-white/50 uppercase tracking-widest mb-1.5">
-            {payload[0].payload.day} Battle
-          </p>
-          <div className="flex flex-col gap-1">
-            <span className="font-mono text-xs text-white">
-              FOCUS: {payload[0].value}%
-            </span>
-            <span className="font-mono text-xs text-white/40">
-              AVOID: {payload[1].value}%
-            </span>
-          </div>
-        </div>
-      );
-    }
-    return null;
-  };
 
   return (
     <div className="bg-card border border-border p-6 rounded flex flex-col justify-between w-full h-full relative group">

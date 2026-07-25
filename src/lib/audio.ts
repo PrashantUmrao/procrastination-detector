@@ -87,7 +87,7 @@ class AudioSynthesizer {
           if (this.windNode) {
             this.windNode.stop();
           }
-        } catch (e) {}
+        } catch {}
       }, fadeOutDuration * 1000);
     }
   }

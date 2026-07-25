@@ -6,16 +6,35 @@ import { useSearchParams, useRouter } from "next/navigation";
 import { useClerk, AuthenticateWithRedirectCallback } from "@clerk/nextjs";
 import { motion, AnimatePresence } from "framer-motion";
 
+interface ClerkError {
+  errors?: Array<{
+    longMessage?: string;
+    message?: string;
+  }>;
+  message?: string;
+}
+
+function getClerkErrorMessage(err: unknown, defaultMsg: string): string {
+  const clerkErr = err as ClerkError;
+  return (
+    clerkErr.errors?.[0]?.longMessage ||
+    clerkErr.errors?.[0]?.message ||
+    clerkErr.message ||
+    defaultMsg
+  );
+}
+
 export default function AuthPage() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const [isCallback, setIsCallback] = useState(false);
+  const [isCallback] = useState(() => {
+    if (typeof window !== "undefined") {
+      return window.location.pathname.includes("sso-callback");
+    }
+    return false;
+  });
 
   // Left-side Background Canvas Loop (Fog, twinkling stars, drifting dust)
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      setIsCallback(window.location.pathname.includes("sso-callback"));
-    }
-
     const canvas = canvasRef.current;
     if (!canvas) return;
 
@@ -198,7 +217,7 @@ export default function AuthPage() {
           className="relative z-30 max-w-lg"
         >
           <span className="font-mono text-[9px] tracking-[0.35em] text-white/40 uppercase block mb-3">
-            IDENTITY DESCENT <span className="text-white/15">//</span> GATEWAY
+            IDENTITY DESCENT <span className="text-white/15">{"//"}</span> GATEWAY
           </span>
           <h1 className="font-orbitron uppercase text-3xl sm:text-4xl md:text-5xl font-black tracking-[0.1em] leading-[1.1] text-glow mb-4 text-white">
             BEGIN YOUR JOURNEY
@@ -273,7 +292,10 @@ function AuthFormContainer() {
   // Sync mode query parameters
   useEffect(() => {
     const currentMode = searchParams.get("mode") === "signup" ? "signup" : "signin";
-    setMode(currentMode);
+    const timer = setTimeout(() => {
+      setMode(currentMode);
+    }, 0);
+    return () => clearTimeout(timer);
   }, [searchParams]);
 
   const handleTabChange = (newMode: "signin" | "signup") => {
@@ -310,9 +332,9 @@ function AuthFormContainer() {
       } else {
         setError("Sign in is incomplete. Please check your inputs.");
       }
-    } catch (err: any) {
+    } catch (err) {
       console.error(err);
-      const msg = err.errors?.[0]?.longMessage || err.errors?.[0]?.message || err.message || "Failed to sign in.";
+      const msg = getClerkErrorMessage(err, "Failed to sign in.");
       setError(msg);
     } finally {
       setLoading(false);
@@ -332,9 +354,9 @@ function AuthFormContainer() {
       });
       await signUp.prepareEmailAddressVerification({ strategy: "email_code" });
       setPendingVerification(true);
-    } catch (err: any) {
+    } catch (err) {
       console.error(err);
-      const msg = err.errors?.[0]?.longMessage || err.errors?.[0]?.message || err.message || "Failed to create account.";
+      const msg = getClerkErrorMessage(err, "Failed to create account.");
       setError(msg);
     } finally {
       setLoading(false);
@@ -357,9 +379,9 @@ function AuthFormContainer() {
       } else {
         setError("Verification is incomplete. Please verify the code entered.");
       }
-    } catch (err: any) {
+    } catch (err) {
       console.error(err);
-      const msg = err.errors?.[0]?.longMessage || err.errors?.[0]?.message || err.message || "Failed to verify code.";
+      const msg = getClerkErrorMessage(err, "Failed to verify code.");
       setError(msg);
     } finally {
       setLoading(false);
@@ -371,9 +393,9 @@ function AuthFormContainer() {
     setError(null);
     try {
       await signUp.prepareEmailAddressVerification({ strategy: "email_code" });
-    } catch (err: any) {
+    } catch (err) {
       console.error(err);
-      const msg = err.errors?.[0]?.longMessage || err.errors?.[0]?.message || err.message || "Failed to resend code.";
+      const msg = getClerkErrorMessage(err, "Failed to resend code.");
       setError(msg);
     }
   };
@@ -402,9 +424,9 @@ function AuthFormContainer() {
       } else {
         setError("Password reset is not supported for this account.");
       }
-    } catch (err: any) {
+    } catch (err) {
       console.error(err);
-      const msg = err.errors?.[0]?.longMessage || err.errors?.[0]?.message || err.message || "Failed to request code.";
+      const msg = getClerkErrorMessage(err, "Failed to request code.");
       setError(msg);
     } finally {
       setLoading(false);
@@ -429,9 +451,9 @@ function AuthFormContainer() {
       } else {
         setError("Password reset is incomplete.");
       }
-    } catch (err: any) {
+    } catch (err) {
       console.error(err);
-      const msg = err.errors?.[0]?.longMessage || err.errors?.[0]?.message || err.message || "Failed to reset password.";
+      const msg = getClerkErrorMessage(err, "Failed to reset password.");
       setError(msg);
     } finally {
       setLoading(false);
@@ -456,9 +478,9 @@ function AuthFormContainer() {
           redirectUrlComplete: "/dashboard",
         });
       }
-    } catch (err: any) {
+    } catch (err) {
       console.error(err);
-      const msg = err.errors?.[0]?.longMessage || err.errors?.[0]?.message || err.message || "OAuth redirect failed.";
+      const msg = getClerkErrorMessage(err, "OAuth redirect failed.");
       setError(msg);
       setLoading(false);
     }

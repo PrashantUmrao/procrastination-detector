@@ -20,18 +20,22 @@ export default function ProductivityScore() {
         try {
           const habits = JSON.parse(savedHabits);
           if (habits.length > 0) {
-            habitsRate = habits.filter((h: any) => h.completedToday).length / habits.length;
+            habitsRate = habits.filter((h: { completedToday: boolean }) => h.completedToday).length / habits.length;
           }
-        } catch (e) {}
+        } catch {
+          // ignore
+        }
       }
 
       if (savedTasks) {
         try {
           const tasks = JSON.parse(savedTasks);
           if (tasks.length > 0) {
-            tasksRate = tasks.filter((t: any) => t.completed).length / tasks.length;
+            tasksRate = tasks.filter((t: { completed: boolean }) => t.completed).length / tasks.length;
           }
-        } catch (e) {}
+        } catch {
+          // ignore
+        }
       }
 
       // Procrastination Score is 100 minus completion rates (so high completion = low procrastination)

@@ -4,8 +4,9 @@ import React, { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowRight, LogIn } from "lucide-react";
-import { useUser, SignInButton, UserButton } from "@/components/providers/AuthProvider";
+import { ArrowRight } from "lucide-react";
+import { useUser, UserButton } from "@/components/providers/AuthProvider";
+import Link from "next/link";
 import { gsap } from "gsap";
 
 export default function HeroSection() {
@@ -14,7 +15,6 @@ export default function HeroSection() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const { isSignedIn } = useUser();
 
-  const [dimensions, setDimensions] = useState({ width: 1200, height: 800 });
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   // Animation values driven by GSAP and read by the Canvas loop
@@ -33,7 +33,6 @@ export default function HeroSection() {
 
     let width = (canvas.width = window.innerWidth);
     let height = (canvas.height = window.innerHeight);
-    setDimensions({ width, height });
 
     // Setup coordinates for the blade shimmer centered in the correct column on desktop/tablet/mobile
     let shimmerX = width >= 1024 ? width * 0.75 : width >= 768 ? width * 0.81 : width * 0.5;
@@ -121,7 +120,6 @@ export default function HeroSection() {
       if (!canvas) return;
       width = canvas.width = window.innerWidth;
       height = canvas.height = window.innerHeight;
-      setDimensions({ width, height });
       shimmerX = width >= 1024 ? width * 0.75 : width >= 768 ? width * 0.81 : width * 0.5;
       
       baseFogBlobs.forEach((fog) => {
@@ -152,7 +150,7 @@ export default function HeroSection() {
     const shimmerInterval = setInterval(triggerShimmer, 12000);
 
     let animationFrameId: number;
-    let startTime = Date.now();
+    const startTime = Date.now();
 
     const renderLoop = () => {
       const elapsed = Date.now() - startTime;
@@ -458,18 +456,18 @@ export default function HeroSection() {
               <UserButton />
             ) : (
               <>
-                <a
+                <Link
                   href="/auth?mode=signin"
                   className="font-orbitron uppercase text-[9px] tracking-widest text-white/50 hover:text-white transition-colors cursor-pointer"
                 >
                   Sign In
-                </a>
-                <a
+                </Link>
+                <Link
                   href="/auth?mode=signup"
                   className="font-orbitron uppercase text-[9px] tracking-widest text-white/50 hover:text-white transition-colors cursor-pointer"
                 >
                   Sign Up
-                </a>
+                </Link>
               </>
             )}
           </motion.div>
@@ -633,20 +631,20 @@ export default function HeroSection() {
                 </>
               ) : (
                 <>
-                  <a
+                  <Link
                     href="/auth?mode=signin"
                     onClick={() => setMobileMenuOpen(false)}
                     className="font-orbitron uppercase text-[10px] tracking-[0.25em] text-white/70 hover:text-white transition-colors py-3 w-full text-center border-b border-white/5 cursor-pointer"
                   >
                     Sign In
-                  </a>
-                  <a
+                  </Link>
+                  <Link
                     href="/auth?mode=signup"
                     onClick={() => setMobileMenuOpen(false)}
                     className="font-orbitron uppercase text-[10px] tracking-[0.25em] text-white/70 hover:text-white transition-colors py-3 w-full text-center cursor-pointer"
                   >
                     Sign Up
-                  </a>
+                  </Link>
                 </>
               )}
             </div>

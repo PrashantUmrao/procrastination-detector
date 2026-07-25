@@ -12,11 +12,14 @@ export default function Home() {
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    setMounted(true);
-    const played = sessionStorage.getItem("intro_played");
-    if (played === "true") {
-      setShowIntro(false);
-    }
+    const timer = setTimeout(() => {
+      setMounted(true);
+      const played = sessionStorage.getItem("intro_played");
+      if (played === "true") {
+        setShowIntro(false);
+      }
+    }, 0);
+    return () => clearTimeout(timer);
   }, []);
 
   const handleEnterDashboard = () => {

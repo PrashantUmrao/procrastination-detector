@@ -3,6 +3,7 @@ import { Orbitron, Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/components/providers/AuthProvider";
 import { ScrollProvider } from "@/components/providers/ScrollProvider";
+import { getAuthUser } from "@/lib/auth";
 
 const orbitron = Orbitron({
   variable: "--font-orbitron",
@@ -29,11 +30,13 @@ export const metadata: Metadata = {
   description: "A cinematic storytelling experience and high-performance psychological productivity platform designed to build ironclad discipline.",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // Synchronize authenticated user state with MongoDB
+  await getAuthUser();
   return (
     <html
       lang="en"
