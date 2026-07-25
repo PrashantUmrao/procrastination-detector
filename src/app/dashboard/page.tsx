@@ -134,7 +134,7 @@ export default function DashboardPage() {
               <ArrowLeft className="w-4 h-4 text-white/40 group-hover:text-white group-hover:-translate-x-[2px] transition-transform duration-300" />
             </button>
             <div className="w-[1px] h-6 bg-white/20 mr-2" />
-            <h1 className="font-orbitron uppercase text-xs tracking-[0.3em] font-extrabold text-white text-glow">
+            <h1 className="font-orbitron uppercase text-[9px] xs:text-[10px] sm:text-xs tracking-[0.15em] xs:tracking-[0.25em] sm:tracking-[0.3em] font-extrabold text-white text-glow">
               Procrastination Detector
             </h1>
             <span className="font-mono text-[9px] tracking-widest text-white/30 hidden sm:inline-block">
@@ -156,7 +156,7 @@ export default function DashboardPage() {
         
         {/* Welcome Section */}
         <section className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 pb-6 border-b border-white/5">
-          <div className="flex items-center gap-4.5">
+          <div className="flex items-center gap-4">
             {user?.imageUrl && (
               <img
                 src={user.imageUrl}

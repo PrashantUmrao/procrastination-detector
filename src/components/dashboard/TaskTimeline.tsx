@@ -137,9 +137,9 @@ export default function TaskTimeline() {
                 }`}
               />
 
-              <div className="flex flex-col gap-1 pr-6">
+              <div className="flex flex-col gap-1 pr-6 flex-1 min-w-0">
                 <span
-                  className={`font-inter text-xs tracking-wide transition-all ${
+                  className={`font-inter text-xs tracking-wide transition-all break-words truncate-none ${
                     task.completed ? "text-white/30 line-through" : "text-white"
                   }`}
                 >

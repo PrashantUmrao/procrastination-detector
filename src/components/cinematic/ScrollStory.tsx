@@ -211,11 +211,11 @@ export default function ScrollStory({ onEnterDashboard }: { onEnterDashboard: ()
                     {ch.subtitle}
                   </span>
 
-                  <h2 className="font-orbitron uppercase text-3xl sm:text-5xl tracking-[0.1em] font-bold text-white mb-6 leading-tight">
+                  <h2 className="font-orbitron uppercase text-[clamp(1.5rem,5vw,2.5rem)] sm:text-5xl tracking-[0.1em] font-bold text-white mb-6 leading-tight">
                     {ch.title}
                   </h2>
 
-                  <p className="font-inter text-sm sm:text-base leading-relaxed tracking-wide text-white/60 mb-8 max-w-lg">
+                  <p className="font-inter text-xs xs:text-sm sm:text-base leading-relaxed tracking-wide text-white/60 mb-8 max-w-lg">
                     {ch.description}
                   </p>
 

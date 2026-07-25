@@ -553,7 +553,7 @@ export default function CinematicIntro({ onComplete }: CinematicIntroProps) {
           
           <h2
             ref={taglineRef}
-            className="font-serif text-lg sm:text-2xl font-light tracking-[0.25em] text-white"
+            className="font-serif text-[clamp(9px,2.8vw,1.1rem)] sm:text-2xl font-light tracking-[0.1em] xs:tracking-[0.18em] sm:tracking-[0.25em] text-white"
             style={{
               maskImage: "linear-gradient(to right, #000 0%, #000 33%, transparent 66%, transparent 100%)",
               WebkitMaskImage: "linear-gradient(to right, #000 0%, #000 33%, transparent 66%, transparent 100%)",

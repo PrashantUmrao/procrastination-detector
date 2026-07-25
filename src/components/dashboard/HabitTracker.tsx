@@ -101,10 +101,10 @@ export default function HabitTracker() {
               onClick={() => toggleHabit(habit.id)}
               className="flex items-center justify-between p-3.5 border border-white/5 hover:border-white/10 hover:bg-white/[0.01] rounded transition-all cursor-pointer group/item"
             >
-              <div className="flex items-center gap-4 pr-4">
+              <div className="flex items-center gap-4 pr-4 flex-1 min-w-0">
                 {/* Custom Checkbox */}
                 <div
-                  className={`w-4.5 h-4.5 border rounded flex items-center justify-center transition-all ${
+                  className={`w-4.5 h-4.5 border rounded flex items-center justify-center transition-all shrink-0 ${
                     habit.completedToday
                       ? "bg-white border-white text-black"
                       : "border-white/20 group-hover/item:border-white/50"
@@ -114,7 +114,7 @@ export default function HabitTracker() {
                 </div>
 
                 <span
-                  className={`font-inter text-xs tracking-wide transition-all ${
+                  className={`font-inter text-xs tracking-wide transition-all break-words truncate-none flex-1 min-w-0 ${
                     habit.completedToday ? "text-white/40 line-through" : "text-white"
                   }`}
                 >
@@ -123,7 +123,7 @@ export default function HabitTracker() {
               </div>
 
               {/* Streak info */}
-              <div className="flex items-center gap-1.5 text-white/30 group-hover/item:text-white/60 transition-all select-none">
+              <div className="flex items-center gap-1.5 text-white/30 group-hover/item:text-white/60 transition-all select-none shrink-0">
                 <Flame className={`w-3.5 h-3.5 ${habit.streak > 0 ? "text-white" : ""}`} />
                 <span className="font-mono text-[10px] tracking-wider">
                   {habit.streak}d

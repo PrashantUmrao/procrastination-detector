@@ -763,7 +763,7 @@ function AuthFormContainer() {
                     )}
                   </button>
 
-                  <div className="flex justify-between items-center text-[10px] font-mono text-white/40 pt-2 px-1">
+                  <div className="flex flex-col xs:flex-row gap-2 justify-between items-center text-[10px] font-mono text-white/40 pt-2 px-1">
                     <button
                       type="button"
                       onClick={handleResendCode}
