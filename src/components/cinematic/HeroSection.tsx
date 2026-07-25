@@ -3,7 +3,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { ArrowRight, LogIn } from "lucide-react";
 import { useUser, SignInButton, UserButton } from "@/components/providers/AuthProvider";
 import { gsap } from "gsap";
@@ -15,6 +15,7 @@ export default function HeroSection() {
   const { isSignedIn } = useUser();
 
   const [dimensions, setDimensions] = useState({ width: 1200, height: 800 });
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   // Animation values driven by GSAP and read by the Canvas loop
   const animValues = useRef({
@@ -398,7 +399,7 @@ export default function HeroSection() {
       {/* 2. THE EMBEDDED SWORD PHOTOGRAPH AS CENTERPIECE (Desktop: Right-centered, Mobile/Tablet: Centered background) */}
       <div className="absolute inset-0 z-0 pointer-events-none flex items-center justify-center md:justify-end">
         <div 
-          className="relative h-[95vh] w-full md:w-[32vw] lg:w-[38vw] aspect-[9/16] md:mr-[4%] lg:mr-[8%] opacity-20 md:opacity-100 transition-opacity duration-1000"
+          className="relative h-[95vh] w-full max-md:aspect-none md:w-[32vw] lg:w-[38vw] aspect-[9/16] md:mr-[4%] lg:mr-[8%] opacity-[0.12] md:opacity-100 transition-opacity duration-1000"
         >
           {/* Main Visual Asset: next/image priority loaded */}
           <Image 
@@ -407,7 +408,7 @@ export default function HeroSection() {
             fill 
             priority
             sizes="(max-width: 768px) 100vw, (max-width: 1024px) 32vw, 38vw"
-            className="object-cover lg:object-contain filter grayscale contrast-[1.12] brightness-[0.58]"
+            className="object-cover lg:object-contain object-center max-md:object-[center_60%] filter grayscale contrast-[1.12] brightness-[0.58] max-md:brightness-[0.45]"
           />
           
           {/* Custom Linear-Radial Dark Vignettes dissolving image margins to pure black background */}
@@ -473,10 +474,20 @@ export default function HeroSection() {
             )}
           </motion.div>
 
+          {/* Mobile Menu Button */}
+          <motion.div variants={itemVariants} className="flex md:hidden order-last">
+            <button
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              className="font-orbitron uppercase text-[9px] tracking-[0.25em] text-white/50 hover:text-white transition-colors cursor-pointer py-2 px-3 border border-white/10 hover:border-white/20 rounded bg-black/50 backdrop-blur-sm z-[60]"
+            >
+              {mobileMenuOpen ? "[ Close ]" : "[ Menu ]"}
+            </button>
+          </motion.div>
+
           {/* Site Logo */}
           <motion.div variants={itemVariants} className="flex items-center gap-3">
             <div className="w-1.5 h-6 bg-white shadow-[0_0_8px_#ffffff]" />
-            <span className="font-orbitron uppercase text-[10px] tracking-[0.4em] font-extrabold text-white">
+            <span className="font-orbitron uppercase text-[9px] tracking-[0.2em] min-[375px]:text-[10px] min-[375px]:tracking-[0.4em] font-extrabold text-white">
               Procrastination Detector
             </span>
           </motion.div>
@@ -493,19 +504,19 @@ export default function HeroSection() {
             >
               <motion.span 
                 variants={itemVariants}
-                className="font-orbitron uppercase text-[9px] tracking-[0.35em] text-white/40 block mb-4"
+                className="font-orbitron uppercase text-[8px] xs:text-[9px] tracking-[0.25em] xs:tracking-[0.35em] text-white/40 block mb-3 md:mb-4"
               >
                 A Journey of Discipline
               </motion.span>
               
               <motion.h1 
                 variants={itemVariants}
-                className="font-orbitron uppercase text-3xl sm:text-5xl md:text-7xl tracking-[0.16em] font-black leading-[1.1] text-glow mb-5"
+                className="font-orbitron uppercase text-[clamp(1.4rem,6.5vw,2.4rem)] md:text-[clamp(2.5rem,5.5vw,3.8rem)] xl:text-7xl tracking-[0.1em] md:tracking-[0.16em] font-black leading-[1.1] text-glow mb-4 md:mb-5"
               >
                 PROCRASTINATION DETECTOR
               </motion.h1>
               
-              <div className="flex flex-col items-start w-fit self-center md:self-start text-left mb-6">
+              <div className="flex flex-col items-start w-fit self-center md:self-start text-left mb-5 md:mb-6">
                 <motion.p 
                   variants={itemVariants}
                   transition={{
@@ -513,7 +524,7 @@ export default function HeroSection() {
                     ease: [0.16, 1, 0.3, 1],
                     delay: 0.42
                   }}
-                  className="font-inter italic text-xs sm:text-sm tracking-widest text-white/55 mb-[11px]"
+                  className="font-inter italic text-[11px] xs:text-xs sm:text-sm tracking-widest text-white/60 mb-2 md:mb-[11px]"
                 >
                   &quot;The End of &apos;I&apos;ll Do It Later.&apos;&quot;
                 </motion.p>
@@ -524,7 +535,7 @@ export default function HeroSection() {
                     ease: "easeOut",
                     delay: 0.58
                   }}
-                  className="font-inter italic text-[13px] sm:text-[14px] md:text-[15px] font-medium tracking-[0.08em] text-[rgba(255,255,255,0.55)]"
+                  className="font-inter italic text-[11px] xs:text-xs sm:text-sm md:text-[15px] font-medium tracking-[0.08em] text-white/50"
                 >
                   — Prashant Umrao
                 </motion.p>
@@ -537,7 +548,7 @@ export default function HeroSection() {
                   ease: [0.16, 1, 0.3, 1],
                   delay: 0.74
                 }}
-                className="font-inter text-[11px] sm:text-xs leading-relaxed tracking-wider text-white/40 mb-10"
+                className="font-inter text-[10px] xs:text-[11px] sm:text-xs leading-relaxed md:leading-relaxed tracking-wider text-white/45 mb-8 md:mb-10 max-w-md mx-auto md:max-w-none md:mx-0 px-4 md:px-0"
               >
                 A cinematic psychological journey translating reflection into combat productivity metrics. Your timeline is locked. Confront the inertia, engage the focus duels, and claim victory over avoidance.
               </motion.p>
@@ -549,20 +560,20 @@ export default function HeroSection() {
                   ease: [0.16, 1, 0.3, 1],
                   delay: 0.90
                 }}
-                className="flex flex-col sm:flex-row gap-4 w-full sm:w-fit justify-center lg:justify-start"
+                className="flex flex-col md:flex-row gap-4 w-full md:w-fit justify-center md:justify-start px-4 md:px-0"
               >
                 <button
                   onClick={() => {
                     router.push("/auth");
                   }}
-                  className="group flex items-center justify-center gap-3 px-7 py-3.5 bg-white text-black font-orbitron text-[9px] tracking-[0.25em] uppercase hover:bg-black hover:text-white border border-white hover:border-white/20 transition-all duration-300 shadow-[0_0_15px_rgba(255,255,255,0.06)] active:scale-95 cursor-pointer"
+                  className="group flex items-center justify-center gap-3 px-7 w-full md:w-auto h-12 md:h-auto py-4 md:py-3.5 bg-white text-black font-orbitron text-[9px] tracking-[0.25em] uppercase hover:bg-black hover:text-white border border-white hover:border-white/20 transition-all duration-300 shadow-[0_0_15px_rgba(255,255,255,0.06)] active:scale-95 cursor-pointer"
                 >
                   Start Your Journey <ArrowRight className="w-3.5 h-3.5 transition-transform duration-300 group-hover:translate-x-1" />
                 </button>
 
                 <a
                   href="/dashboard"
-                  className="px-7 py-3.5 border border-white/10 text-white font-orbitron text-[9px] tracking-[0.25em] uppercase hover:border-white hover:bg-white/5 transition-all duration-300 flex items-center justify-center cursor-pointer"
+                  className="px-7 w-full md:w-auto h-12 md:h-auto py-4 md:py-3.5 border border-white/10 text-white font-orbitron text-[9px] tracking-[0.25em] uppercase hover:border-white hover:bg-white/5 transition-all duration-300 flex items-center justify-center cursor-pointer"
                 >
                   Explore Dashboard
                 </a>
@@ -578,6 +589,70 @@ export default function HeroSection() {
         </div>
 
       </div>
+
+      {/* Mobile Menu Overlay */}
+      <AnimatePresence>
+        {mobileMenuOpen && (
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            transition={{ duration: 0.3, ease: "easeOut" }}
+            className="fixed inset-0 z-50 bg-black/95 backdrop-blur-xl flex flex-col justify-center items-center p-6 md:hidden"
+          >
+            <div className="flex flex-col items-center gap-8 w-full max-w-xs">
+              <button
+                onClick={() => {
+                  setMobileMenuOpen(false);
+                  document.getElementById("chapter-enemy")?.scrollIntoView({ behavior: "smooth" });
+                }}
+                className="font-orbitron uppercase text-[10px] tracking-[0.25em] text-white/70 hover:text-white transition-colors py-3 w-full text-center border-b border-white/5 cursor-pointer"
+              >
+                The Chronicles
+              </button>
+              <a
+                href="/dashboard"
+                onClick={() => setMobileMenuOpen(false)}
+                className="font-orbitron uppercase text-[10px] tracking-[0.25em] text-white/70 hover:text-white transition-colors py-3 w-full text-center border-b border-white/5 cursor-pointer"
+              >
+                Sanctuary
+              </a>
+              
+              {isSignedIn ? (
+                <>
+                  <a
+                    href="/dashboard"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="font-orbitron uppercase text-[10px] tracking-[0.25em] text-white/70 hover:text-white transition-colors py-3 w-full text-center border-b border-white/5 cursor-pointer"
+                  >
+                    Dashboard
+                  </a>
+                  <div className="py-3 flex justify-center items-center w-full z-[70]">
+                    <UserButton />
+                  </div>
+                </>
+              ) : (
+                <>
+                  <a
+                    href="/auth?mode=signin"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="font-orbitron uppercase text-[10px] tracking-[0.25em] text-white/70 hover:text-white transition-colors py-3 w-full text-center border-b border-white/5 cursor-pointer"
+                  >
+                    Sign In
+                  </a>
+                  <a
+                    href="/auth?mode=signup"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="font-orbitron uppercase text-[10px] tracking-[0.25em] text-white/70 hover:text-white transition-colors py-3 w-full text-center cursor-pointer"
+                  >
+                    Sign Up
+                  </a>
+                </>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
