@@ -292,12 +292,7 @@ export default function CinematicIntro({ onComplete }: CinematicIntroProps) {
     window.addEventListener("resize", handleResize);
 
     let frameId: number;
-    let lastTime = Date.now();
-
     const loop = () => {
-      const now = Date.now();
-      const elapsed = (now - lastTime) / 1000;
-      lastTime = now;
 
       ctx.clearRect(0, 0, width, height);
 

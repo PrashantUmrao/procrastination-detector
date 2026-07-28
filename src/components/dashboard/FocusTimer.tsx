@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Play, Pause, RotateCcw, Square, Volume2, Maximize2, X } from "lucide-react";
 import { audioSynthesizer } from "@/lib/audio";
 import { gsap } from "gsap";
@@ -292,7 +292,18 @@ export default function FocusTimer() {
     };
   }, [isRunning, mode, mission, sessionDuration, distractions]);
 
-  const toggleTimer = () => {
+  const switchMode = useCallback((newMode: "focus" | "break") => {
+    setIsRunning(false);
+    setMode(newMode);
+    const defaultDur = newMode === "focus" ? 25 * 60 : 5 * 60;
+    setSessionDuration(defaultDur);
+    setTimeLeft(defaultDur);
+    setIsLocked(false);
+    setDistractions(0);
+    sessionStartRef.current = null;
+  }, []);
+
+  const toggleTimer = useCallback(() => {
     if (!mission.trim()) return;
 
     if (!isRunning) {
@@ -314,7 +325,7 @@ export default function FocusTimer() {
       }
       setIsRunning(false);
     }
-  };
+  }, [mission, isRunning, isFullFocusActive, selectedSound, mode]);
 
   const stopTimer = () => {
     setIsRunning(false);
@@ -336,7 +347,7 @@ export default function FocusTimer() {
     sessionStartRef.current = null;
   };
 
-  const resetTimer = () => {
+  const resetTimer = useCallback(() => {
     setIsRunning(false);
     if (isFullFocusActive) {
       audioSynthesizer.fadeAmbientOut(1.0);
@@ -347,7 +358,7 @@ export default function FocusTimer() {
     setIsLocked(false);
     setDistractions(0);
     sessionStartRef.current = null;
-  };
+  }, [isFullFocusActive, mode]);
 
   const adjustTime = (minutes: number) => {
     const change = minutes * 60;
@@ -361,25 +372,14 @@ export default function FocusTimer() {
     });
   };
 
-  const switchMode = (newMode: "focus" | "break") => {
-    setIsRunning(false);
-    setMode(newMode);
-    const defaultDur = newMode === "focus" ? 25 * 60 : 5 * 60;
-    setSessionDuration(defaultDur);
-    setTimeLeft(defaultDur);
-    setIsLocked(false);
-    setDistractions(0);
-    sessionStartRef.current = null;
-  };
-
-  const skipBreak = () => {
+  const skipBreak = useCallback(() => {
     switchMode("focus");
     setTimeout(() => {
       audioSynthesizer.playFocusStart();
       setIsLocked(true);
       setIsRunning(true);
     }, 100);
-  };
+  }, [switchMode]);
 
   const handleSoundSelect = (soundName: string) => {
     let nextSound: string | null = soundName;
@@ -416,7 +416,7 @@ export default function FocusTimer() {
     localStorage.setItem("pd_ambient_volume", newVol.toString());
   };
 
-  const toggleMute = () => {
+  const toggleMute = useCallback(() => {
     setIsMuted((prev) => {
       const nextMuted = !prev;
       if (nextMuted) {
@@ -430,7 +430,7 @@ export default function FocusTimer() {
       }
       return nextMuted;
     });
-  };
+  }, [volume]);
 
   // Skip Transition Interruption Logic
   const skipIntro = () => {
@@ -449,7 +449,7 @@ export default function FocusTimer() {
   };
 
   // Full Focus Entry / Exit Triggers
-  const enterFullFocus = async () => {
+  const enterFullFocus = useCallback(async () => {
     if (!mission.trim() || isEntering) return;
 
     setIsEntering(true);
@@ -627,9 +627,9 @@ export default function FocusTimer() {
       console.error("Failed to enter fullscreen:", err);
       setIsEntering(false);
     }
-  };
+  }, [mission, isEntering, selectedSound]);
 
-  const exitFullFocus = async () => {
+  const exitFullFocus = useCallback(async () => {
     if (isExitTransitionActive) return;
 
     setIsExitTransitionActive(true);
@@ -665,7 +665,7 @@ export default function FocusTimer() {
       { opacity: 1, duration: 0.5, ease: "power2.inOut" }
     )
     .delay(1.0);
-  };
+  }, [isExitTransitionActive]);
 
   // Sync Fullscreen browser changes (e.g. Esc key pressed)
   useEffect(() => {

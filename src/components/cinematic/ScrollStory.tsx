@@ -2,8 +2,7 @@
 
 import React, { useEffect, useState, useRef } from "react";
 import Image from "next/image";
-import { motion, useScroll, useTransform, motionValue, MotionValue } from "framer-motion";
-import { ArrowRight, Lock, Eye } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import { useUser, SignInButton } from "@/components/providers/AuthProvider";
 
 interface Chapter {
