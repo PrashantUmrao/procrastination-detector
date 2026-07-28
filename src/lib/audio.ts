@@ -10,6 +10,7 @@ class AudioSynthesizer {
   private ambientGain: GainNode | null = null;
   private ambientTimer: NodeJS.Timeout | null = null;
   private currentAmbientSound: string | null = null;
+  public isFlowActive = false;
 
   constructor() {
     // Audio Context is initialized on demand after user gesture
@@ -22,6 +23,24 @@ class AudioSynthesizer {
       this.ctx = new (window.AudioContext || WebkitAudioContext)();
     } catch (e) {
       console.error("Web Audio API not supported:", e);
+    }
+  }
+
+  enableFlowAudio() {
+    this.isFlowActive = true;
+    if (this.currentAmbientSound) {
+      const currentSound = this.currentAmbientSound;
+      const currentVol = this.ambientGain ? this.ambientGain.gain.value : 0.5;
+      this.startAmbient(currentSound, currentVol);
+    }
+  }
+
+  disableFlowAudio() {
+    this.isFlowActive = false;
+    if (this.currentAmbientSound) {
+      const currentSound = this.currentAmbientSound;
+      const currentVol = this.ambientGain ? this.ambientGain.gain.value : 0.5;
+      this.startAmbient(currentSound, currentVol);
     }
   }
 
@@ -156,7 +175,7 @@ class AudioSynthesizer {
         osc.frequency.exponentialRampToValueAtTime(endFreq, now + duration);
 
         gainNode.gain.setValueAtTime(0, now);
-        const maxVol = 0.02 * (this.ambientGain ? this.ambientGain.gain.value : 0.5);
+        const maxVol = (this.isFlowActive ? 0.035 : 0.02) * (this.ambientGain ? this.ambientGain.gain.value : 0.5);
         gainNode.gain.linearRampToValueAtTime(maxVol, now + 0.02);
         gainNode.gain.exponentialRampToValueAtTime(0.0001, now + duration);
 
@@ -165,7 +184,9 @@ class AudioSynthesizer {
         osc.start(now);
         osc.stop(now + duration + 0.05);
 
-        const nextTime = 4000 + Math.random() * 8000;
+        const nextTime = this.isFlowActive
+          ? 2000 + Math.random() * 3000
+          : 4000 + Math.random() * 8000;
         this.ambientTimer = setTimeout(playNext, nextTime);
       } else if (sound === "cafe") {
         const osc = this.ctx.createOscillator();
@@ -188,6 +209,53 @@ class AudioSynthesizer {
         osc.stop(now + duration + 0.05);
 
         const nextTime = 2000 + Math.random() * 6000;
+        this.ambientTimer = setTimeout(playNext, nextTime);
+      } else if (sound === "rain" && this.isFlowActive) {
+        const osc = this.ctx.createOscillator();
+        const gainNode = this.ctx.createGain();
+        const filter = this.ctx.createBiquadFilter();
+
+        osc.type = "sawtooth";
+        osc.frequency.setValueAtTime(45 + Math.random() * 20, now);
+        osc.frequency.exponentialRampToValueAtTime(10, now + 3.5);
+
+        filter.type = "lowpass";
+        filter.frequency.value = 100;
+
+        gainNode.gain.setValueAtTime(0, now);
+        const maxVol = 0.06 * (this.ambientGain ? this.ambientGain.gain.value : 0.5);
+        gainNode.gain.linearRampToValueAtTime(maxVol, now + 0.5);
+        gainNode.gain.exponentialRampToValueAtTime(0.0001, now + 3.5);
+
+        osc.connect(filter);
+        filter.connect(gainNode);
+        gainNode.connect(this.ctx.destination);
+        
+        osc.start(now);
+        osc.stop(now + 3.6);
+
+        const nextTime = 10000 + Math.random() * 15000;
+        this.ambientTimer = setTimeout(playNext, nextTime);
+      } else if (sound === "fireplace" && this.isFlowActive) {
+        const bufferSize = Math.floor(0.12 * this.ctx.sampleRate);
+        const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+        const data = buffer.getChannelData(0);
+        const snapAmp = Math.random() * 0.15 + 0.05;
+        for (let i = 0; i < bufferSize; i++) {
+          data[i] = snapAmp * Math.exp(-i / 150) * (Math.random() * 2 - 1);
+        }
+        const sourceNode = this.ctx.createBufferSource();
+        sourceNode.buffer = buffer;
+        
+        const gainNode = this.ctx.createGain();
+        gainNode.gain.setValueAtTime(0.15 * (this.ambientGain ? this.ambientGain.gain.value : 0.5), now);
+        
+        sourceNode.connect(gainNode);
+        gainNode.connect(this.ctx.destination);
+        sourceNode.start(now);
+        sourceNode.stop(now + 0.16);
+
+        const nextTime = 1200 + Math.random() * 2400;
         this.ambientTimer = setTimeout(playNext, nextTime);
       }
     };
@@ -241,7 +309,7 @@ class AudioSynthesizer {
     this.ambientNode = source;
     this.ambientGain = gain;
 
-    if (sound === "forest" || sound === "cafe") {
+    if (sound === "forest" || sound === "cafe" || ((sound === "rain" || sound === "fireplace") && this.isFlowActive)) {
       this.scheduleOverlays(sound);
     }
   }

@@ -37,6 +37,13 @@ interface SessionSummary {
   achievementIds: string[];
 }
 
+const formatFlowTime = (secs: number) => {
+  const h = Math.floor(secs / 3600);
+  const m = Math.floor((secs % 3600) / 60);
+  const s = secs % 60;
+  return `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
+};
+
 const ACHIEVEMENTS: Achievement[] = [
   { id: "first_session", icon: "🏆", title: "First Session", description: "Completed your first focus session." },
   { id: "three_sessions", icon: "🔥", title: "3 Sessions Today", description: "Completed three focus sessions today." },
@@ -44,7 +51,17 @@ const ACHIEVEMENTS: Achievement[] = [
   { id: "flow_starter", icon: "⚡", title: "Flow Starter", description: "Focused for 25 minutes or more." },
   { id: "deep_worker", icon: "🧠", title: "Deep Worker", description: "Focused for 50 minutes or more." },
   { id: "no_distractions", icon: "💎", title: "No Distractions", description: "Completed a session with zero distractions." },
+  { id: "entered_flow", icon: "🌊", title: "Entered Flow", description: "Reached the ultimate state of concentration." },
+  { id: "deep_worker_flow", icon: "🧠", title: "Deep Worker", description: "Maintained flow state for over 25 minutes." },
+  { id: "mind_over_distraction", icon: "⚔", title: "Mind Over Distraction", description: "Completed a flow session with zero distractions." },
+  { id: "flow_master", icon: "👑", title: "Flow Master", description: "Completed 3 or more focus sessions in Flow State." },
+  { id: "peak_focus", icon: "∞", title: "Peak Focus", description: "Achieved a perfect 100 Focus Score in Flow State." },
 ];
+
+// Flow State Configuration Thresholds
+const FLOW_CONSECUTIVE_SESSIONS_REQUIRED = 3;
+const FLOW_MIN_FOCUS_SCORE = 90;
+const FLOW_MAX_DISTRACTIONS_ALLOWED = 1;
 
 export default function FocusTimer() {
   const [mode, setMode] = useState<"focus" | "break">("focus");
@@ -81,6 +98,17 @@ export default function FocusTimer() {
   const [sessionSummary, setSessionSummary] = useState<SessionSummary | null>(null);
   const [earnedAchievements, setEarnedAchievements] = useState<Achievement[]>([]);
   const [saveStatus, setSaveStatus] = useState<"saving" | "success" | "error">("saving");
+
+  // Phase 6 Flow State Mode States
+  const [isFlowEntering, setIsFlowEntering] = useState(false);
+  const [flowEnteringText, setFlowEnteringText] = useState("");
+  const [isFlowStateActive, setIsFlowStateActive] = useState(false);
+  const [flowTime, setFlowTime] = useState(0);
+  const [flowStartedAt, setFlowStartedAt] = useState<Date | null>(null);
+  const [flowSessionsCompleted, setFlowSessionsCompleted] = useState(0);
+  const [flowFocusScores, setFlowFocusScores] = useState<number[]>([]);
+  const [flowReflectText, setFlowReflectText] = useState("");
+  const [showFlowInterruptedMessage, setShowFlowInterruptedMessage] = useState(false);
 
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const sessionStartRef = useRef<Date | null>(null);
@@ -326,6 +354,29 @@ export default function FocusTimer() {
     return list;
   }, [completedSessions]);
 
+  // Check Flow State specific achievements
+  const checkFlowAchievements = useCallback((score: number) => {
+    const list: Achievement[] = [ACHIEVEMENTS[6]]; // Entered Flow achieved by default
+
+    if (flowTime >= 25 * 60) {
+      list.push(ACHIEVEMENTS[7]);
+    }
+
+    if (distractions === 0) {
+      list.push(ACHIEVEMENTS[8]);
+    }
+
+    if (flowSessionsCompleted + 1 >= 3) {
+      list.push(ACHIEVEMENTS[9]);
+    }
+
+    if (score === 100) {
+      list.push(ACHIEVEMENTS[10]);
+    }
+
+    return list;
+  }, [flowTime, distractions, flowSessionsCompleted]);
+
   // Asynchronous auto save to MongoDB
   const autoSaveSession = useCallback(async (summary: SessionSummary) => {
     setSaveStatus("saving");
@@ -362,6 +413,105 @@ export default function FocusTimer() {
     }
   }, [selectedSound, volume]);
 
+  // Live stopwatch loop for flow state duration
+  useEffect(() => {
+    let stopwatch: NodeJS.Timeout;
+    if (isFlowStateActive && isRunning) {
+      stopwatch = setInterval(() => {
+        setFlowTime((prev) => prev + 1);
+      }, 1000);
+    }
+    return () => clearInterval(stopwatch);
+  }, [isFlowStateActive, isRunning]);
+
+  const saveFlowHistory = useCallback(async (end: Date) => {
+    if (!flowStartedAt) return;
+    const duration = Math.round((end.getTime() - flowStartedAt.getTime()) / 1000);
+    const sessionsCount = flowSessionsCompleted;
+    const avgScore = flowFocusScores.length > 0 
+      ? Math.round(flowFocusScores.reduce((a, b) => a + b, 0) / flowFocusScores.length)
+      : 95;
+
+    let reflection = "";
+    if (sessionsCount >= 4) {
+      reflection = `Legendary focus. You maintained a pure Flow State for ${formatFlowTime(duration)} across ${sessionsCount} consecutive sessions. This is one of your strongest focus streaks.`;
+    } else if (sessionsCount >= 2) {
+      reflection = `Outstanding consistency. You maintained uninterrupted focus across ${sessionsCount} consecutive sessions. Your mind was exceptionally stable.`;
+    } else {
+      reflection = `Excellent effort. You unlocked Flow State and sustained deep work for ${formatFlowTime(duration)}. Keep maintaining consistent rhythms to lock your flow even longer next time.`;
+    }
+    
+    setFlowReflectText(reflection);
+
+    try {
+      await fetch("/api/flow-history", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          startedAt: flowStartedAt.toISOString(),
+          endedAt: end.toISOString(),
+          duration,
+          sessions: sessionsCount,
+          averageFocusScore: avgScore,
+          maxContinuousFlow: duration,
+          reflection
+        })
+      });
+    } catch (e) {
+      console.error("Failed to save flow history:", e);
+    }
+
+    setFlowStartedAt(null);
+  }, [flowStartedAt, flowSessionsCompleted, flowFocusScores]);
+
+  // Break flow state and notify user
+  const breakFlowState = useCallback(() => {
+    setIsFlowStateActive(false);
+    audioSynthesizer.disableFlowAudio();
+    saveFlowHistory(new Date());
+
+    audioSynthesizer.playFocusEnd();
+    setShowFlowInterruptedMessage(true);
+    setTimeout(() => {
+      setShowFlowInterruptedMessage(false);
+    }, 2500);
+
+    localStorage.setItem("pd_recent_focus_sessions", "[]");
+  }, [saveFlowHistory]);
+
+  // Flow Entry Cinematic Ritual sequence
+  const enterFlowStateRitual = useCallback((onCompleteRitual: () => void) => {
+    setIsFlowEntering(true);
+    setFlowEnteringText("FLOW STATE DETECTED");
+    audioSynthesizer.setAmbientVolume(volume * 0.25);
+
+    const messages = [
+      "FLOW STATE DETECTED",
+      "Mind Stable",
+      "No Interruptions",
+      "Deep Work Confirmed",
+      "Entering Flow State..."
+    ];
+
+    const tl = gsap.timeline({
+      onComplete: () => {
+        setIsFlowEntering(false);
+        onCompleteRitual();
+      }
+    });
+
+    messages.forEach((msg) => {
+      tl.call(() => setFlowEnteringText(msg))
+        .fromTo(textRef.current,
+          { opacity: 0, filter: "blur(8px)", y: 10 },
+          { opacity: 1, filter: "blur(0px)", y: 0, duration: 0.55, ease: "power2.out" }
+        )
+        .to(textRef.current,
+          { opacity: 0, filter: "blur(8px)", y: -10, duration: 0.5, ease: "power2.in", delay: 0.6 }
+        );
+    });
+  }, [volume]);
+
   // Timer Tick Engine
   useEffect(() => {
     if (isRunning) {
@@ -370,6 +520,14 @@ export default function FocusTimer() {
       }
 
       timerRef.current = setInterval(() => {
+        // Monitor flow interruption inside the tick
+        if (isFlowStateActive && (distractions > FLOW_MAX_DISTRACTIONS_ALLOWED || pauseCount > 2)) {
+          clearInterval(timerRef.current!);
+          setIsRunning(false);
+          breakFlowState();
+          return;
+        }
+
         setTimeLeft((prev) => {
           if (prev <= 1) {
             clearInterval(timerRef.current!);
@@ -382,28 +540,94 @@ export default function FocusTimer() {
               const start = sessionStartRef.current || new Date(Date.now() - sessionDuration * 1000);
               const end = new Date();
               const score = calculateFocusScore(true, pauseCount, distractions);
-              const achievements = checkAchievements(todayFocusMinutes, sessionDuration, pauseCount, distractions);
-              const achievementIds = achievements.map((a) => a.id);
+              
+              // Handle flow state streak count
+              let consecutive = 0;
+              try {
+                const recentStr = localStorage.getItem("pd_recent_focus_sessions") || "[]";
+                const recent = JSON.parse(recentStr);
+                recent.push({ completed: true, score, distractions, timestamp: Date.now() });
+                if (recent.length > 3) recent.shift();
+                localStorage.setItem("pd_recent_focus_sessions", JSON.stringify(recent));
 
-              const summary = {
-                mission,
-                focusDuration: sessionDuration,
-                breakDuration: 5 * 60,
-                startedAt: start,
-                endedAt: end,
-                completed: true,
-                focusScore: score,
-                pauseCount,
-                distractionCount: distractions,
-                achievementIds
-              };
+                consecutive = recent.filter(
+                  (s: { completed: boolean; score: number; distractions: number; timestamp: number }) => s.completed && s.score >= FLOW_MIN_FOCUS_SCORE && s.distractions <= FLOW_MAX_DISTRACTIONS_ALLOWED
+                ).length;
+              } catch {}
 
-              setSessionSummary(summary);
-              setEarnedAchievements(achievements);
-              setIsCompletionActive(true);
+              const isFlowTriggered = !isFlowStateActive && consecutive >= FLOW_CONSECUTIVE_SESSIONS_REQUIRED;
 
-              // Save automatically in the background
-              autoSaveSession(summary);
+              if (isFlowTriggered) {
+                enterFlowStateRitual(() => {
+                  setIsFlowStateActive(true);
+                  setFlowStartedAt(new Date());
+                  setFlowTime(0);
+                  setFlowSessionsCompleted(0);
+                  setFlowFocusScores([]);
+                  audioSynthesizer.enableFlowAudio();
+
+                  setMode("focus");
+                  const nextDur = 25 * 60;
+                  setSessionDuration(nextDur);
+                  setTimeLeft(nextDur);
+                  setIsLocked(true);
+                  setDistractions(0);
+                  setPauseCount(0);
+                  sessionStartRef.current = new Date();
+                  setTimeout(() => {
+                    setIsRunning(true);
+                  }, 100);
+                });
+              } else if (isFlowStateActive) {
+                // Flow maintained!
+                setFlowSessionsCompleted((p) => p + 1);
+                setFlowFocusScores((p) => [...p, score]);
+
+                const achievements = checkFlowAchievements(score);
+                const achievementIds = achievements.map((a) => a.id);
+
+                const summary = {
+                  mission,
+                  focusDuration: sessionDuration,
+                  breakDuration: 5 * 60,
+                  startedAt: start,
+                  endedAt: end,
+                  completed: true,
+                  focusScore: score,
+                  pauseCount,
+                  distractionCount: distractions,
+                  achievementIds
+                };
+
+                setSessionSummary(summary);
+                setEarnedAchievements(achievements);
+                setIsCompletionActive(true);
+
+                autoSaveSession(summary);
+              } else {
+                // Normal focus completion
+                const achievements = checkAchievements(todayFocusMinutes, sessionDuration, pauseCount, distractions);
+                const achievementIds = achievements.map((a) => a.id);
+
+                const summary = {
+                  mission,
+                  focusDuration: sessionDuration,
+                  breakDuration: 5 * 60,
+                  startedAt: start,
+                  endedAt: end,
+                  completed: true,
+                  focusScore: score,
+                  pauseCount,
+                  distractionCount: distractions,
+                  achievementIds
+                };
+
+                setSessionSummary(summary);
+                setEarnedAchievements(achievements);
+                setIsCompletionActive(true);
+
+                autoSaveSession(summary);
+              }
 
               sessionStartRef.current = null;
             } else {
@@ -433,7 +657,7 @@ export default function FocusTimer() {
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };
-  }, [isRunning, mode, mission, sessionDuration, distractions, pauseCount, todayFocusMinutes, completedSessions, autoSaveSession, checkAchievements]);
+  }, [isRunning, mode, mission, sessionDuration, distractions, pauseCount, todayFocusMinutes, completedSessions, autoSaveSession, checkAchievements, isFlowStateActive, enterFlowStateRitual, breakFlowState, checkFlowAchievements]);
 
   const switchMode = useCallback((newMode: "focus" | "break") => {
     setIsRunning(false);
@@ -483,6 +707,10 @@ export default function FocusTimer() {
       const start = sessionStartRef.current || new Date(Date.now() - elapsed * 1000);
       const end = new Date();
       const score = calculateFocusScore(false, pauseCount, distractions);
+
+      if (isFlowStateActive) {
+        breakFlowState();
+      }
       
       saveFocusSession(
         mission,
@@ -792,6 +1020,10 @@ export default function FocusTimer() {
   const exitFullFocus = useCallback(async () => {
     if (isExitTransitionActive) return;
 
+    if (isFlowStateActive) {
+      breakFlowState();
+    }
+
     setIsExitTransitionActive(true);
     
     // Animate exit overlay
@@ -825,7 +1057,7 @@ export default function FocusTimer() {
       { opacity: 1, duration: 0.5, ease: "power2.inOut" }
     )
     .delay(1.0);
-  }, [isExitTransitionActive]);
+  }, [isExitTransitionActive, isFlowStateActive, breakFlowState]);
 
   // Sync Fullscreen browser changes (e.g. Esc key pressed)
   useEffect(() => {
@@ -833,6 +1065,9 @@ export default function FocusTimer() {
       const isCurrentlyFullscreen = document.fullscreenElement === fullscreenContainerRef.current;
       if (!isCurrentlyFullscreen && isFullFocusActive) {
         setIsFullFocusActive(false);
+        if (isFlowStateActive) {
+          breakFlowState();
+        }
         localStorage.setItem("pd_last_focus_exit_time", Date.now().toString());
       }
     };
@@ -848,7 +1083,7 @@ export default function FocusTimer() {
       document.removeEventListener("mozfullscreenchange", handleFullscreenChange);
       document.removeEventListener("MSFullscreenChange", handleFullscreenChange);
     };
-  }, [isFullFocusActive]);
+  }, [isFullFocusActive, isFlowStateActive, breakFlowState]);
 
   // Prevent scroll when in Full Focus
   useEffect(() => {
@@ -909,13 +1144,16 @@ export default function FocusTimer() {
     const draw = () => {
       ctx.clearRect(0, 0, width, height);
 
+      // Slower particles during flow state mode
+      const speedMultiplier = isFlowStateActive ? 0.35 : 1.0;
+
       particles.forEach((p) => {
         if (p.opacity < p.maxOpacity) {
           p.opacity += 0.005;
         }
 
-        p.y += p.speedY;
-        p.x += p.speedX;
+        p.y += p.speedY * speedMultiplier;
+        p.x += p.speedX * speedMultiplier;
 
         if (p.y < 0) {
           p.y = height;
@@ -928,7 +1166,9 @@ export default function FocusTimer() {
 
         ctx.beginPath();
         ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(255, 255, 255, ${p.opacity})`;
+        ctx.fillStyle = isFlowStateActive 
+          ? `rgba(224, 242, 254, ${p.opacity * 1.2})` 
+          : `rgba(255, 255, 255, ${p.opacity})`;
         ctx.fill();
       });
 
@@ -941,7 +1181,7 @@ export default function FocusTimer() {
       cancelAnimationFrame(animationId);
       window.removeEventListener("resize", handleResize);
     };
-  }, [isFullFocusActive, isIntroCompleted]);
+  }, [isFullFocusActive, isIntroCompleted, isFlowStateActive]);
 
   // Phase 5 Completion Screen Animations
   useEffect(() => {
@@ -1004,10 +1244,10 @@ export default function FocusTimer() {
         if (code === "Space") {
           e.preventDefault();
           toggleTimer();
-        } else if (key === "r") {
+        } else if (key === "r" && !isFlowStateActive) { // Cannot reset while in flow
           e.preventDefault();
           resetTimer();
-        } else if (key === "s") {
+        } else if (key === "s" && !isFlowStateActive) { // Cannot skip break while in flow
           e.preventDefault();
           if (mode === "break") {
             skipBreak();
@@ -1039,6 +1279,7 @@ export default function FocusTimer() {
     isMuted,
     toggleMute,
     isCompletionActive,
+    isFlowStateActive,
   ]);
 
   // Auto-hiding Controls (4-Second mouse inactivity)
@@ -1085,15 +1326,10 @@ export default function FocusTimer() {
     return hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`;
   };
 
-  const formatRemainingFocus = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}m ${secs}s`;
-  };
-
-  const formatSoundName = (sound: string | null) => {
-    if (!sound) return "None";
-    return sound.charAt(0).toUpperCase() + sound.slice(1);
+  const getFlowStabilityMeter = () => {
+    if (distractions === 0) return { bar: "█████████████", label: "Excellent", color: "text-sky-400" };
+    if (distractions === 1) return { bar: "█████████░░░░", label: "Stable", color: "text-white/70" };
+    return { bar: "████░░░░░░░░░", label: "Unstable", color: "text-red-400" };
   };
 
   // Phase 5 Action Button Handlers
@@ -1108,6 +1344,7 @@ export default function FocusTimer() {
     setDistractions(0);
     setPauseCount(0);
     sessionStartRef.current = null;
+    setFlowReflectText("");
   };
 
   const handleTakeBreak = () => {
@@ -1120,6 +1357,7 @@ export default function FocusTimer() {
     setDistractions(0);
     setPauseCount(0);
     sessionStartRef.current = null;
+    setFlowReflectText("");
 
     setTimeout(() => {
       setIsRunning(true);
@@ -1128,6 +1366,7 @@ export default function FocusTimer() {
 
   const handleReturnToDashboard = () => {
     setIsCompletionActive(false);
+    setFlowReflectText("");
     exitFullFocus();
   };
 
@@ -1321,9 +1560,15 @@ export default function FocusTimer() {
 
       {/* 2. FULL FOCUS MODE OVERLAY VIEW */}
       {isFullFocusActive && (
-        <div className="fixed inset-0 w-screen h-screen bg-black z-50 flex flex-col items-center justify-center select-none overflow-hidden font-inter">
+        <div className={`fixed inset-0 w-screen h-screen bg-black z-50 flex flex-col items-center justify-center select-none overflow-hidden font-inter transition-all duration-1000 ${
+          isFlowStateActive ? "border-t border-sky-400/20" : ""
+        }`}>
           {/* Subtle slow breathing background gradient */}
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(15,15,15,0.85)_0%,#000000_100%)] pointer-events-none" />
+          <div className={`absolute inset-0 transition-opacity duration-1000 ${
+            isFlowStateActive 
+              ? "bg-[radial-gradient(circle_at_center,rgba(8,47,73,0.3)_0%,#000000_100%)]" 
+              : "bg-[radial-gradient(circle_at_center,rgba(15,15,15,0.85)_0%,#000000_100%)]"
+          }`} />
 
           {/* Slow drifting fog elements */}
           <div className="absolute inset-0 overflow-hidden pointer-events-none opacity-30">
@@ -1380,27 +1625,27 @@ export default function FocusTimer() {
                     className="w-full h-auto opacity-95"
                   >
                     <defs>
-                      <linearGradient id="ff-blade-top-p4" x1="0" y1="0" x2="0" y2="1">
+                      <linearGradient id="ff-blade-top-p5" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="0%" stopColor="#ffffff" />
                         <stop offset="100%" stopColor="#b5b5b5" />
                       </linearGradient>
-                      <linearGradient id="ff-blade-bottom-p4" x1="0" y1="0" x2="0" y2="1">
+                      <linearGradient id="ff-blade-bottom-p5" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="0%" stopColor="#8c8c8c" />
                         <stop offset="100%" stopColor="#555555" />
                       </linearGradient>
-                      <linearGradient id="ff-metal-bright-p4" x1="0" y1="0" x2="1" y2="0">
+                      <linearGradient id="ff-metal-bright-p5" x1="0" y1="0" x2="1" y2="0">
                         <stop offset="0%" stopColor="#7a7a7a" />
                         <stop offset="50%" stopColor="#ffffff" />
                         <stop offset="100%" stopColor="#7a7a7a" />
                       </linearGradient>
-                      <linearGradient id="ff-hilt-grad-p4" x1="0" y1="0" x2="0" y2="1">
+                      <linearGradient id="ff-hilt-grad-p5" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="0%" stopColor="#dcdcdc" />
                         <stop offset="50%" stopColor="#aaaaaa" />
                         <stop offset="100%" stopColor="#444444" />
                       </linearGradient>
                     </defs>
-                    <circle cx="20" cy="12" r="3.5" fill="url(#ff-metal-bright-p4)" stroke="#3a3a3a" strokeWidth="0.5" />
-                    <rect x="23.5" y="10.5" width="46.5" height="3" rx="1" fill="url(#ff-hilt-grad-p4)" />
+                    <circle cx="20" cy="12" r="3.5" fill="url(#ff-metal-bright-p5)" stroke="#3a3a3a" strokeWidth="0.5" />
+                    <rect x="23.5" y="10.5" width="46.5" height="3" rx="1" fill="url(#ff-hilt-grad-p5)" />
                     <line x1="33" y1="10.5" x2="33" y2="13.5" stroke="#3a3a3a" strokeWidth="0.5" />
                     <line x1="43" y1="10.5" x2="43" y2="13.5" stroke="#3a3a3a" strokeWidth="0.5" />
                     <line x1="53" y1="10.5" x2="53" y2="13.5" stroke="#3a3a3a" strokeWidth="0.5" />
@@ -1411,14 +1656,14 @@ export default function FocusTimer() {
                       width="5"
                       height="16"
                       rx="1"
-                      fill="url(#ff-metal-bright-p4)"
+                      fill="url(#ff-metal-bright-p5)"
                       stroke="#3a3a3a"
                       strokeWidth="0.5"
                     />
                     <rect x="71.5" y="10.5" width="2" height="3" fill="#ffffff" />
-                    <rect x="75" y="9.5" width="8" height="5" fill="url(#ff-hilt-grad-p4)" />
-                    <path d="M83 9.5 L460 9.5 L480 12 L83 12 Z" fill="url(#ff-blade-top-p4)" />
-                    <path d="M83 12 L480 12 L460 14.5 L83 14.5 Z" fill="url(#ff-blade-bottom-p4)" />
+                    <rect x="75" y="9.5" width="8" height="5" fill="url(#ff-hilt-grad-p5)" />
+                    <path d="M83 9.5 L460 9.5 L480 12 L83 12 Z" fill="url(#ff-blade-top-p5)" />
+                    <path d="M83 12 L480 12 L460 14.5 L83 14.5 Z" fill="url(#ff-blade-bottom-p5)" />
                   </svg>
                 </div>
               </div>
@@ -1461,8 +1706,14 @@ export default function FocusTimer() {
             <div className="flex flex-col items-center justify-center w-full h-full p-12 z-20 relative">
               {/* TOP CENTER: MISSION */}
               <div className="absolute top-12 left-1/2 -translate-x-1/2 text-center flex flex-col items-center gap-1 z-20">
-                <span className="font-orbitron uppercase text-[9px] tracking-[0.3em] text-white/30">MISSION</span>
-                <h2 className="font-orbitron uppercase text-xl sm:text-2xl tracking-[0.1em] font-extrabold text-white text-glow max-w-lg leading-relaxed">
+                <span className={`font-orbitron uppercase text-[9px] tracking-[0.3em] transition-colors duration-1000 ${
+                  isFlowStateActive ? "text-sky-400/40" : "text-white/30"
+                }`}>
+                  {isFlowStateActive ? "FLOW STATE" : "MISSION"}
+                </span>
+                <h2 className={`font-orbitron uppercase text-xl sm:text-2xl tracking-[0.1em] font-extrabold transition-colors duration-1000 max-w-lg leading-relaxed ${
+                  isFlowStateActive ? "text-sky-100 text-sky-glow" : "text-white text-glow"
+                }`}>
                   {mission}
                 </h2>
               </div>
@@ -1470,31 +1721,57 @@ export default function FocusTimer() {
               {/* CENTER: TIMER */}
               <div className="flex flex-col items-center justify-center flex-1 max-w-xl text-center z-20">
                 {/* Huge Countdown Timer */}
-                <h1 className="font-mono text-8xl sm:text-9xl md:text-[11rem] tracking-widest text-white text-glow select-none leading-none">
+                <h1 className={`font-mono text-8xl sm:text-9xl md:text-[11rem] tracking-widest select-none leading-none transition-colors duration-1000 ${
+                  isFlowStateActive ? "text-sky-200 text-sky-glow" : "text-white text-glow"
+                }`}>
                   {formatTime(timeLeft)}
                 </h1>
 
-                <span className="font-orbitron text-xs text-glow text-white font-bold tracking-widest uppercase mt-4 block">
-                  {mode === "focus" ? "Deep Focus Active" : "Refueling Active"}
+                <span className={`font-orbitron text-xs font-bold tracking-widest uppercase mt-4 block transition-colors duration-1000 ${
+                  isFlowStateActive ? "text-sky-300/80 text-sky-glow" : "text-white text-glow"
+                }`}>
+                  {isFlowStateActive ? "IMMERSIVE FLOW STABLE" : mode === "focus" ? "Deep Focus Active" : "Refueling Active"}
                 </span>
 
                 {/* Sleek Glowing Progress Bar */}
-                <div className="w-64 sm:w-80 h-[2px] bg-white/10 rounded-full overflow-hidden mt-8 relative shadow-[0_0_10px_rgba(255,255,255,0.05)]">
+                <div className={`w-64 sm:w-80 h-[2px] rounded-full overflow-hidden mt-8 relative shadow-[0_0_10px_rgba(255,255,255,0.05)] transition-colors duration-1000 ${
+                  isFlowStateActive ? "bg-sky-950" : "bg-white/10"
+                }`}>
                   <div
-                    className="h-full bg-white transition-all duration-300 ease-linear shadow-[0_0_8px_rgba(255,255,255,0.95)]"
+                    className={`h-full transition-all duration-300 ease-linear ${
+                      isFlowStateActive 
+                        ? "bg-sky-300 shadow-[0_0_12px_rgba(125,211,252,0.95)]" 
+                        : "bg-white shadow-[0_0_8px_rgba(255,255,255,0.95)]"
+                    }`}
                     style={{ width: `${progress}%` }}
                   />
                 </div>
+
+                {/* Flow Stability Meter (Rendered only when Flow State Active) */}
+                {isFlowStateActive && (
+                  <div className="flex flex-col items-center mt-6 gap-1 animate-pulse">
+                    <span className="font-mono text-[10px] tracking-widest text-sky-400/80">
+                      {getFlowStabilityMeter().bar}
+                    </span>
+                    <span className={`font-orbitron uppercase text-[8px] tracking-[0.2em] font-extrabold ${getFlowStabilityMeter().color}`}>
+                      Flow Stability: {getFlowStabilityMeter().label}
+                    </span>
+                  </div>
+                )}
               </div>
 
               {/* RIGHT SIDE PANEL: LIVE STATISTICS */}
               <div
-                className={`absolute right-12 top-1/2 -translate-y-1/2 w-64 bg-black/40 border border-white/5 backdrop-blur-md p-6 rounded-lg flex flex-col gap-4 z-30 transition-opacity duration-700 shadow-[0_0_25px_rgba(0,0,0,0.6)] ${
+                className={`absolute right-12 top-1/2 -translate-y-1/2 w-64 bg-black/40 border backdrop-blur-md p-6 rounded-lg flex flex-col gap-4 z-30 transition-all duration-1000 shadow-[0_0_25px_rgba(0,0,0,0.6)] ${
                   showControls ? "opacity-100" : "opacity-0 pointer-events-none"
-                }`}
+                } ${isFlowStateActive ? "border-sky-500/10" : "border-white/5"}`}
               >
-                <div className="pb-2 border-b border-white/5">
-                  <span className="font-orbitron uppercase text-[9px] tracking-widest text-white/40">Live Statistics</span>
+                <div className={`pb-2 border-b ${isFlowStateActive ? "border-sky-500/10" : "border-white/5"}`}>
+                  <span className={`font-orbitron uppercase text-[9px] tracking-widest transition-colors duration-1000 ${
+                    isFlowStateActive ? "text-sky-400" : "text-white/40"
+                  }`}>
+                    {isFlowStateActive ? "FLOW METRICS" : "Live Statistics"}
+                  </span>
                 </div>
 
                 <div className="flex flex-col gap-3">
@@ -1514,21 +1791,23 @@ export default function FocusTimer() {
                   </div>
 
                   <div className="flex justify-between items-center text-xs">
+                    <span className="font-mono text-white/40 uppercase text-[9px] tracking-wider">Focus Score</span>
+                    <span className="font-mono text-white font-bold">{calculateFocusScore(true, pauseCount, distractions)}</span>
+                  </div>
+
+                  <div className="flex justify-between items-center text-xs">
                     <span className="font-mono text-white/40 uppercase text-[9px] tracking-wider">Distractions</span>
                     <span className="font-mono text-white font-bold text-red-400">{distractions}</span>
                   </div>
 
-                  <div className="flex justify-between items-center text-xs">
-                    <span className="font-mono text-white/40 uppercase text-[9px] tracking-wider">Current Env</span>
-                    <span className="font-mono text-white font-bold uppercase text-[10px]">
-                      {formatSoundName(selectedSound)}
-                    </span>
-                  </div>
-
-                  <div className="flex justify-between items-center text-xs">
-                    <span className="font-mono text-white/40 uppercase text-[9px] tracking-wider">Remaining Time</span>
-                    <span className="font-mono text-white font-bold text-glow">{formatRemainingFocus(timeLeft)}</span>
-                  </div>
+                  {isFlowStateActive && (
+                    <div className="flex justify-between items-center text-xs pt-2 border-t border-sky-500/10">
+                      <span className="font-mono text-sky-400/80 uppercase text-[9px] tracking-wider">Flow Time</span>
+                      <span className="font-mono text-sky-300 font-extrabold text-sky-glow">
+                        {formatFlowTime(flowTime)}
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -1548,7 +1827,9 @@ export default function FocusTimer() {
                         onClick={() => handleSoundSelect(sound)}
                         className={`px-2 py-1 border text-[9px] font-mono uppercase tracking-wider rounded transition-all cursor-pointer ${
                           selectedSound === sound
-                            ? "bg-white text-black border-white font-bold"
+                            ? isFlowStateActive 
+                              ? "bg-sky-300 text-black border-sky-300 font-bold" 
+                              : "bg-white text-black border-white font-bold"
                             : "border-white/5 text-white/40 hover:text-white/70 hover:border-white/20"
                         }`}
                       >
@@ -1583,7 +1864,11 @@ export default function FocusTimer() {
                   {/* Start / Pause */}
                   <button
                     onClick={toggleTimer}
-                    className="w-12 h-12 bg-white hover:bg-neutral-200 text-black flex items-center justify-center rounded-full transition-all shadow-[0_0_15px_rgba(255,255,255,0.15)] active:scale-95 cursor-pointer"
+                    className={`w-12 h-12 flex items-center justify-center rounded-full transition-all active:scale-95 cursor-pointer ${
+                      isFlowStateActive 
+                        ? "bg-sky-200 hover:bg-sky-100 text-black shadow-[0_0_20px_rgba(125,211,252,0.35)]" 
+                        : "bg-white hover:bg-neutral-200 text-black shadow-[0_0_15px_rgba(255,255,255,0.15)]"
+                    }`}
                     title={isRunning ? "Pause" : "Resume"}
                   >
                     {isRunning ? (
@@ -1593,14 +1878,16 @@ export default function FocusTimer() {
                     )}
                   </button>
 
-                  {/* Reset */}
-                  <button
-                    onClick={resetTimer}
-                    className="p-2.5 border border-white/5 hover:border-white/20 text-white/40 hover:text-white transition-all rounded-full cursor-pointer"
-                    title="Reset Timer"
-                  >
-                    <RotateCcw className="w-4 h-4" />
-                  </button>
+                  {/* Reset (Hidden in Flow State) */}
+                  {!isFlowStateActive && (
+                    <button
+                      onClick={resetTimer}
+                      className="p-2.5 border border-white/5 hover:border-white/20 text-white/40 hover:text-white transition-all rounded-full cursor-pointer"
+                      title="Reset Timer"
+                    >
+                      <RotateCcw className="w-4 h-4" />
+                    </button>
+                  )}
 
                   {/* End Session (Stop) */}
                   <button
@@ -1611,8 +1898,8 @@ export default function FocusTimer() {
                     <Square className="w-4 h-4 fill-current" />
                   </button>
 
-                  {/* Skip Break */}
-                  {mode === "break" && (
+                  {/* Skip Break (Hidden in Flow State) */}
+                  {mode === "break" && !isFlowStateActive && (
                     <button
                       onClick={skipBreak}
                       className="px-3 py-1.5 border border-white/10 text-white font-orbitron uppercase text-[9px] tracking-widest hover:bg-white hover:text-black transition-all rounded cursor-pointer"
@@ -1622,14 +1909,16 @@ export default function FocusTimer() {
                   )}
                 </div>
 
-                {/* Exit Focus Mode (Right) */}
+                {/* Exit Focus Mode (Right - Hidden in Flow State) */}
                 <div className="w-64 flex justify-end">
-                  <button
-                    onClick={exitFullFocus}
-                    className="px-4 py-2 border border-white/10 text-white font-orbitron uppercase text-[9px] tracking-widest hover:bg-white hover:text-black hover:border-white transition-all duration-300 flex items-center gap-2 cursor-pointer"
-                  >
-                    <X className="w-3.5 h-3.5" /> Exit Focus Mode
-                  </button>
+                  {!isFlowStateActive && (
+                    <button
+                      onClick={exitFullFocus}
+                      className="px-4 py-2 border border-white/10 text-white font-orbitron uppercase text-[9px] tracking-widest hover:bg-white hover:text-black hover:border-white transition-all duration-300 flex items-center gap-2 cursor-pointer"
+                    >
+                      <X className="w-3.5 h-3.5" /> Exit Focus Mode
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
@@ -1671,17 +1960,35 @@ export default function FocusTimer() {
           <div className="w-full max-w-2xl flex flex-col items-center z-20 gap-8 mt-auto mb-auto">
             {/* Title Header */}
             <div ref={compTitleRef} className="text-center flex flex-col items-center gap-2">
-              <span className="font-orbitron uppercase text-[11px] tracking-[0.4em] text-white/30 block animate-pulse">
-                Operation Successful
+              <span className={`font-orbitron uppercase text-[11px] tracking-[0.4em] block animate-pulse ${
+                isFlowStateActive ? "text-sky-400/50" : "text-white/30"
+              }`}>
+                {isFlowStateActive ? "Flow Mode Engaged" : "Operation Successful"}
               </span>
-              <h1 className="font-orbitron uppercase text-3xl sm:text-4xl font-extrabold tracking-[0.2em] text-white text-glow">
-                MISSION COMPLETE
+              <h1 className={`font-orbitron uppercase text-3xl sm:text-4xl font-extrabold tracking-[0.2em] ${
+                isFlowStateActive ? "text-sky-100 text-sky-glow" : "text-white text-glow"
+              }`}>
+                {isFlowStateActive ? "FLOW MAINTAINED" : "MISSION COMPLETE"}
               </h1>
-              <div className="w-24 h-[1px] bg-white/20 mt-3" />
+              <div className={`w-24 h-[1px] mt-3 ${isFlowStateActive ? "bg-sky-500/20" : "bg-white/20"}`} />
             </div>
 
             {/* Session Summary & Analytics Grid */}
             <div ref={compCardsRef} className="w-full grid grid-cols-1 md:grid-cols-2 gap-4">
+              
+              {/* Local AI Reflection Card */}
+              {flowReflectText && (
+                <div className="bg-white/[0.03] border border-sky-500/20 p-5 rounded-lg md:col-span-2 relative overflow-hidden group shadow-[0_0_20px_rgba(56,189,248,0.05)]">
+                  <div className="absolute top-0 right-0 w-32 h-32 bg-sky-500/[0.02] rounded-full blur-xl pointer-events-none" />
+                  <span className="font-orbitron uppercase text-[9px] tracking-widest text-sky-400 block mb-1">
+                    AI Focus Reflection
+                  </span>
+                  <p className="font-inter text-xs italic text-neutral-300 leading-relaxed mt-2">
+                    &ldquo;{flowReflectText}&rdquo;
+                  </p>
+                </div>
+              )}
+
               {/* Mission Card */}
               <div className="bg-white/[0.02] border border-white/5 p-5 rounded-lg flex flex-col justify-between">
                 <div>
@@ -1768,12 +2075,18 @@ export default function FocusTimer() {
                     {earnedAchievements.map((ach) => (
                       <div
                         key={ach.id}
-                        className="bg-white/[0.03] border border-white/10 px-3 py-2 rounded flex items-center gap-2 hover:bg-white/[0.06] transition-all duration-300 shadow-[0_0_10px_rgba(255,255,255,0.01)]"
+                        className={`border px-3 py-2 rounded flex items-center gap-2 hover:bg-white/[0.06] transition-all duration-300 shadow-[0_0_10px_rgba(255,255,255,0.01)] ${
+                          ach.id.includes("flow") || ach.id === "entered_flow" 
+                            ? "bg-sky-950/20 border-sky-500/20" 
+                            : "bg-white/[0.03] border-white/10"
+                        }`}
                         title={ach.description}
                       >
                         <span className="text-base shrink-0">{ach.icon}</span>
                         <div className="flex flex-col">
-                          <span className="font-orbitron text-[9px] tracking-wider text-white font-bold uppercase">
+                          <span className={`font-orbitron text-[9px] tracking-wider font-bold uppercase ${
+                            ach.id.includes("flow") || ach.id === "entered_flow" ? "text-sky-300" : "text-white"
+                          }`}>
                             {ach.title}
                           </span>
                           <span className="font-inter text-[8px] text-white/40 leading-none">{ach.description}</span>
@@ -1826,7 +2139,7 @@ export default function FocusTimer() {
                 onClick={handleStartNextSession}
                 className="px-6 py-2.5 bg-white text-black font-orbitron uppercase text-[10px] tracking-widest hover:bg-neutral-200 transition-all font-extrabold shadow-[0_0_15px_rgba(255,255,255,0.15)] cursor-pointer"
               >
-                Start Next Focus Session
+                {isFlowStateActive ? "Continue Flow State" : "Start Next Focus Session"}
               </button>
 
               <button
@@ -1843,6 +2156,38 @@ export default function FocusTimer() {
                 Return to Dashboard
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* 5. FLOW STATE ENTRY OVERLAY VIEW */}
+      {isFlowEntering && (
+        <div className="fixed inset-0 w-screen h-screen bg-black z-[110] flex flex-col items-center justify-center select-none overflow-hidden font-inter">
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(8,47,73,0.3)_0%,#000000_100%)] pointer-events-none" />
+          <div className="h-12 flex items-center justify-center">
+            <span
+              ref={textRef}
+              className="font-orbitron uppercase text-xs md:text-sm tracking-[0.3em] text-white text-glow animate-pulse"
+            >
+              {flowEnteringText}
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* 6. FLOW INTERRUPTED MESSAGE OVERLAY */}
+      {showFlowInterruptedMessage && (
+        <div className="fixed inset-0 w-screen h-screen bg-black/95 z-[120] flex flex-col items-center justify-center select-none overflow-hidden">
+          <div className="flex flex-col items-center gap-2">
+            <span className="font-orbitron uppercase text-[9px] tracking-[0.4em] text-red-500 block animate-pulse">
+              WARNING
+            </span>
+            <h2 className="font-orbitron uppercase text-xl font-bold tracking-[0.2em] text-white text-glow">
+              FLOW INTERRUPTED
+            </h2>
+            <p className="font-inter text-xs text-white/40 mt-1">
+              Returning to Normal Focus Mode...
+            </p>
           </div>
         </div>
       )}
