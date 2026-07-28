@@ -37,12 +37,26 @@ interface SessionSummary {
   achievementIds: string[];
 }
 
-const formatFlowTime = (secs: number) => {
-  const h = Math.floor(secs / 3600);
-  const m = Math.floor((secs % 3600) / 60);
-  const s = secs % 60;
-  return `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
-};
+interface LockInSummary {
+  mission: string;
+  lockDuration: number;
+  focusTime: number;
+  breakTime: number;
+  completed: boolean;
+  focusScore: number;
+  distractionCount: number;
+  interruptionEvents: IInterruptionEvent[];
+  fullscreenExits: number;
+  tabSwitches: number;
+  startedAt: Date;
+  endedAt: Date;
+}
+
+interface IInterruptionEvent {
+  timestamp: Date;
+  type: "fullscreen-exit" | "visibility-hidden" | "window-blur";
+  durationAway: number; // in seconds
+}
 
 const ACHIEVEMENTS: Achievement[] = [
   { id: "first_session", icon: "🏆", title: "First Session", description: "Completed your first focus session." },
@@ -56,7 +70,19 @@ const ACHIEVEMENTS: Achievement[] = [
   { id: "mind_over_distraction", icon: "⚔", title: "Mind Over Distraction", description: "Completed a flow session with zero distractions." },
   { id: "flow_master", icon: "👑", title: "Flow Master", description: "Completed 3 or more focus sessions in Flow State." },
   { id: "peak_focus", icon: "∞", title: "Peak Focus", description: "Achieved a perfect 100 Focus Score in Flow State." },
+  { id: "locked_in", icon: "🛡", title: "Locked In", description: "Successfully initiated an Emergency Lock session." },
+  { id: "iron_focus", icon: "⚔", title: "Iron Focus", description: "Completed a Lock In session with zero distractions." },
+  { id: "sixty_min_lock", icon: "🔥", title: "60 Minute Lock", description: "Completed a 60-minute Emergency Lock session." },
+  { id: "zero_interruptions", icon: "💎", title: "Zero Interruptions", description: "Uninterrupted deep work committed under Lock In." },
+  { id: "deep_commitment", icon: "🧠", title: "Deep Commitment", description: "Completed a 90-minute Emergency Lock session." },
 ];
+
+const formatFlowTime = (secs: number) => {
+  const h = Math.floor(secs / 3600);
+  const m = Math.floor((secs % 3600) / 60);
+  const s = secs % 60;
+  return `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
+};
 
 // Flow State Configuration Thresholds
 const FLOW_CONSECUTIVE_SESSIONS_REQUIRED = 3;
@@ -95,9 +121,10 @@ export default function FocusTimer() {
 
   // Phase 5 Completion Overlay States
   const [isCompletionActive, setIsCompletionActive] = useState(false);
-  const [sessionSummary, setSessionSummary] = useState<SessionSummary | null>(null);
+  const [sessionSummary, setSessionSummary] = useState<SessionSummary | LockInSummary | null>(null);
   const [earnedAchievements, setEarnedAchievements] = useState<Achievement[]>([]);
   const [saveStatus, setSaveStatus] = useState<"saving" | "success" | "error">("saving");
+  const [completedSessionType, setCompletedSessionType] = useState<"normal" | "lock-in">("normal");
 
   // Phase 6 Flow State Mode States
   const [isFlowEntering, setIsFlowEntering] = useState(false);
@@ -110,11 +137,22 @@ export default function FocusTimer() {
   const [flowReflectText, setFlowReflectText] = useState("");
   const [showFlowInterruptedMessage, setShowFlowInterruptedMessage] = useState(false);
 
+  // Phase 7 Emergency Lock States
+  const [showLockInModal, setShowLockInModal] = useState(false);
+  const [lockInStep, setLockInStep] = useState(1);
+  const [selectedLockDuration, setSelectedLockDuration] = useState(30);
+  const [isLockInActive, setIsLockInActive] = useState(false);
+  const [showWelcomeBack, setShowWelcomeBack] = useState(false);
+  const [fullscreenExits, setFullscreenExits] = useState(0);
+  const [tabSwitches, setTabSwitches] = useState(0);
+  const [interruptionEvents, setInterruptionEvents] = useState<IInterruptionEvent[]>([]);
+
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const sessionStartRef = useRef<Date | null>(null);
   const fullscreenContainerRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const mouseTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const leftTimeRef = useRef<number | null>(null);
 
   // Sword and text animation refs
   const swordImgRef = useRef<HTMLDivElement | null>(null);
@@ -186,6 +224,47 @@ export default function FocusTimer() {
       console.error("Error saving focus session:", err);
     }
   }, [selectedSound, volume]);
+
+  // Save Lock In Session to MongoDB
+  const autoSaveLockInSession = useCallback(async (summary: SessionSummary | LockInSummary) => {
+    setSaveStatus("saving");
+    try {
+      const lockDur = "lockDuration" in summary ? summary.lockDuration : summary.focusDuration;
+      const focusT = "focusTime" in summary ? summary.focusTime : summary.focusDuration;
+      const breakT = "breakTime" in summary ? summary.breakTime : 0;
+      const events = "interruptionEvents" in summary ? summary.interruptionEvents : [];
+      const fsExits = "fullscreenExits" in summary ? summary.fullscreenExits : 0;
+      const tabSw = "tabSwitches" in summary ? summary.tabSwitches : 0;
+
+      const response = await fetch("/api/lock-in", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          mission: summary.mission,
+          lockDuration: lockDur,
+          focusTime: focusT,
+          breakTime: breakT,
+          completed: summary.completed,
+          focusScore: summary.focusScore,
+          distractionCount: summary.distractionCount,
+          interruptionEvents: events,
+          fullscreenExits: fsExits,
+          tabSwitches: tabSw,
+          startedAt: summary.startedAt.toISOString(),
+          endedAt: summary.endedAt.toISOString()
+        })
+      });
+
+      if (response.ok) {
+        setSaveStatus("success");
+        window.dispatchEvent(new Event("focusSessionSaved"));
+      } else {
+        setSaveStatus("error");
+      }
+    } catch {
+      setSaveStatus("error");
+    }
+  }, []);
 
   // Load state on mount
   useEffect(() => {
@@ -356,7 +435,7 @@ export default function FocusTimer() {
 
   // Check Flow State specific achievements
   const checkFlowAchievements = useCallback((score: number) => {
-    const list: Achievement[] = [ACHIEVEMENTS[6]]; // Entered Flow achieved by default
+    const list: Achievement[] = [ACHIEVEMENTS[6]];
 
     if (flowTime >= 25 * 60) {
       list.push(ACHIEVEMENTS[7]);
@@ -378,24 +457,28 @@ export default function FocusTimer() {
   }, [flowTime, distractions, flowSessionsCompleted]);
 
   // Asynchronous auto save to MongoDB
-  const autoSaveSession = useCallback(async (summary: SessionSummary) => {
+  const autoSaveSession = useCallback(async (summary: SessionSummary | LockInSummary) => {
     setSaveStatus("saving");
     try {
+      const focusDur = "focusDuration" in summary ? summary.focusDuration : summary.lockDuration;
+      const pauses = "pauseCount" in summary ? summary.pauseCount : 0;
+      const achievements = "achievementIds" in summary ? summary.achievementIds : [];
+
       const response = await fetch("/api/focus-sessions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           mission: summary.mission,
           type: "focus",
-          duration: summary.focusDuration,
+          duration: focusDur,
           startedAt: summary.startedAt.toISOString(),
           endedAt: summary.endedAt.toISOString(),
           completed: summary.completed,
           distractions: summary.distractionCount,
           focusScore: summary.focusScore,
-          pauseCount: summary.pauseCount,
+          pauseCount: pauses,
           distractionCount: summary.distractionCount,
-          achievementIds: summary.achievementIds,
+          achievementIds: achievements,
           environment: selectedSound || "None",
           volume,
           deviceType: "Desktop"
@@ -512,6 +595,67 @@ export default function FocusTimer() {
     });
   }, [volume]);
 
+  // Emergency Lock In Distraction Recorder
+  const recordInterruption = useCallback((type: "fullscreen-exit" | "visibility-hidden" | "window-blur") => {
+    if (leftTimeRef.current !== null) return;
+
+    leftTimeRef.current = Date.now();
+    setDistractions((p) => p + 1);
+
+    if (type === "fullscreen-exit") {
+      setFullscreenExits((p) => p + 1);
+    } else if (type === "visibility-hidden") {
+      setTabSwitches((p) => p + 1);
+    }
+
+    const newEvent: IInterruptionEvent = {
+      timestamp: new Date(),
+      type,
+      durationAway: 0
+    };
+
+    setInterruptionEvents((prev) => [...prev, newEvent]);
+    setShowWelcomeBack(true);
+  }, []);
+
+  // Emergency Lock Visiblity Hooks
+  useEffect(() => {
+    if (!isLockInActive || !isIntroCompleted || isCompletionActive) return;
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        recordInterruption("visibility-hidden");
+      }
+    };
+
+    const handleWindowBlur = () => {
+      recordInterruption("window-blur");
+    };
+
+    const handleFullscreenChange = () => {
+      const isCurrentlyFullscreen = document.fullscreenElement === fullscreenContainerRef.current;
+      if (!isCurrentlyFullscreen) {
+        recordInterruption("fullscreen-exit");
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("blur", handleWindowBlur);
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+    document.addEventListener("webkitfullscreenchange", handleFullscreenChange);
+    document.addEventListener("mozfullscreenchange", handleFullscreenChange);
+    document.addEventListener("MSFullscreenChange", handleFullscreenChange);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("blur", handleWindowBlur);
+      document.removeEventListener("fullscreenchange", handleFullscreenChange);
+      document.removeEventListener("webkitfullscreenchange", handleFullscreenChange);
+      document.removeEventListener("mozfullscreenchange", handleFullscreenChange);
+      document.removeEventListener("MSFullscreenChange", handleFullscreenChange);
+    };
+  }, [isLockInActive, isIntroCompleted, isCompletionActive, recordInterruption]);
+
   // Timer Tick Engine
   useEffect(() => {
     if (isRunning) {
@@ -541,92 +685,139 @@ export default function FocusTimer() {
               const end = new Date();
               const score = calculateFocusScore(true, pauseCount, distractions);
               
-              // Handle flow state streak count
-              let consecutive = 0;
-              try {
-                const recentStr = localStorage.getItem("pd_recent_focus_sessions") || "[]";
-                const recent = JSON.parse(recentStr);
-                recent.push({ completed: true, score, distractions, timestamp: Date.now() });
-                if (recent.length > 3) recent.shift();
-                localStorage.setItem("pd_recent_focus_sessions", JSON.stringify(recent));
+              if (isLockInActive) {
+                // Emergency Lock Complete
+                const achievements = [
+                  ACHIEVEMENTS[11] // Locked In achievement
+                ];
+                if (distractions === 0) {
+                  achievements.push(ACHIEVEMENTS[12]); // Iron Focus
+                  achievements.push(ACHIEVEMENTS[14]); // Zero Interruptions
+                }
+                if (sessionDuration >= 60 * 60) {
+                  achievements.push(ACHIEVEMENTS[13]); // 60 Minute Lock
+                }
+                if (sessionDuration >= 90 * 60) {
+                  achievements.push(ACHIEVEMENTS[15]); // Deep Commitment
+                }
 
-                consecutive = recent.filter(
-                  (s: { completed: boolean; score: number; distractions: number; timestamp: number }) => s.completed && s.score >= FLOW_MIN_FOCUS_SCORE && s.distractions <= FLOW_MAX_DISTRACTIONS_ALLOWED
-                ).length;
-              } catch {}
+                const summary = {
+                  mission,
+                  focusDuration: sessionDuration,
+                  breakDuration: 0,
+                  startedAt: start,
+                  endedAt: end,
+                  completed: true,
+                  focusScore: score,
+                  pauseCount,
+                  distractionCount: distractions,
+                  achievementIds: achievements.map((a) => a.id)
+                };
 
-              const isFlowTriggered = !isFlowStateActive && consecutive >= FLOW_CONSECUTIVE_SESSIONS_REQUIRED;
+                setSessionSummary(summary);
+                setEarnedAchievements(achievements);
+                setIsCompletionActive(true);
 
-              if (isFlowTriggered) {
-                enterFlowStateRitual(() => {
-                  setIsFlowStateActive(true);
-                  setFlowStartedAt(new Date());
-                  setFlowTime(0);
-                  setFlowSessionsCompleted(0);
-                  setFlowFocusScores([]);
-                  audioSynthesizer.enableFlowAudio();
-
-                  setMode("focus");
-                  const nextDur = 25 * 60;
-                  setSessionDuration(nextDur);
-                  setTimeLeft(nextDur);
-                  setIsLocked(true);
-                  setDistractions(0);
-                  setPauseCount(0);
-                  sessionStartRef.current = new Date();
-                  setTimeout(() => {
-                    setIsRunning(true);
-                  }, 100);
+                // Save Lock In record
+                autoSaveLockInSession({
+                  ...summary,
+                  lockDuration: sessionDuration,
+                  focusTime: sessionDuration,
+                  breakTime: 0,
+                  interruptionEvents,
+                  fullscreenExits,
+                  tabSwitches
                 });
-              } else if (isFlowStateActive) {
-                // Flow maintained!
-                setFlowSessionsCompleted((p) => p + 1);
-                setFlowFocusScores((p) => [...p, score]);
 
-                const achievements = checkFlowAchievements(score);
-                const achievementIds = achievements.map((a) => a.id);
-
-                const summary = {
-                  mission,
-                  focusDuration: sessionDuration,
-                  breakDuration: 5 * 60,
-                  startedAt: start,
-                  endedAt: end,
-                  completed: true,
-                  focusScore: score,
-                  pauseCount,
-                  distractionCount: distractions,
-                  achievementIds
-                };
-
-                setSessionSummary(summary);
-                setEarnedAchievements(achievements);
-                setIsCompletionActive(true);
-
-                autoSaveSession(summary);
+                setIsLockInActive(false);
               } else {
-                // Normal focus completion
-                const achievements = checkAchievements(todayFocusMinutes, sessionDuration, pauseCount, distractions);
-                const achievementIds = achievements.map((a) => a.id);
+                // Handle flow state streak count
+                let consecutive = 0;
+                try {
+                  const recentStr = localStorage.getItem("pd_recent_focus_sessions") || "[]";
+                  const recent = JSON.parse(recentStr);
+                  recent.push({ completed: true, score, distractions, timestamp: Date.now() });
+                  if (recent.length > 3) recent.shift();
+                  localStorage.setItem("pd_recent_focus_sessions", JSON.stringify(recent));
 
-                const summary = {
-                  mission,
-                  focusDuration: sessionDuration,
-                  breakDuration: 5 * 60,
-                  startedAt: start,
-                  endedAt: end,
-                  completed: true,
-                  focusScore: score,
-                  pauseCount,
-                  distractionCount: distractions,
-                  achievementIds
-                };
+                  consecutive = recent.filter(
+                    (s: { completed: boolean; score: number; distractions: number; timestamp: number }) => s.completed && s.score >= FLOW_MIN_FOCUS_SCORE && s.distractions <= FLOW_MAX_DISTRACTIONS_ALLOWED
+                  ).length;
+                } catch {}
 
-                setSessionSummary(summary);
-                setEarnedAchievements(achievements);
-                setIsCompletionActive(true);
+                const isFlowTriggered = !isFlowStateActive && consecutive >= FLOW_CONSECUTIVE_SESSIONS_REQUIRED;
 
-                autoSaveSession(summary);
+                if (isFlowTriggered) {
+                  enterFlowStateRitual(() => {
+                    setIsFlowStateActive(true);
+                    setFlowStartedAt(new Date());
+                    setFlowTime(0);
+                    setFlowSessionsCompleted(0);
+                    setFlowFocusScores([]);
+                    audioSynthesizer.enableFlowAudio();
+
+                    setMode("focus");
+                    const nextDur = 25 * 60;
+                    setSessionDuration(nextDur);
+                    setTimeLeft(nextDur);
+                    setIsLocked(true);
+                    setDistractions(0);
+                    setPauseCount(0);
+                    sessionStartRef.current = new Date();
+                    setTimeout(() => {
+                      setIsRunning(true);
+                    }, 100);
+                  });
+                } else if (isFlowStateActive) {
+                  // Flow maintained!
+                  setFlowSessionsCompleted((p) => p + 1);
+                  setFlowFocusScores((p) => [...p, score]);
+
+                  const achievements = checkFlowAchievements(score);
+                  const achievementIds = achievements.map((a) => a.id);
+
+                  const summary = {
+                    mission,
+                    focusDuration: sessionDuration,
+                    breakDuration: 5 * 60,
+                    startedAt: start,
+                    endedAt: end,
+                    completed: true,
+                    focusScore: score,
+                    pauseCount,
+                    distractionCount: distractions,
+                    achievementIds
+                  };
+
+                  setSessionSummary(summary);
+                  setEarnedAchievements(achievements);
+                  setIsCompletionActive(true);
+
+                  autoSaveSession(summary);
+                } else {
+                  // Normal focus completion
+                  const achievements = checkAchievements(todayFocusMinutes, sessionDuration, pauseCount, distractions);
+                  const achievementIds = achievements.map((a) => a.id);
+
+                  const summary = {
+                    mission,
+                    focusDuration: sessionDuration,
+                    breakDuration: 5 * 60,
+                    startedAt: start,
+                    endedAt: end,
+                    completed: true,
+                    focusScore: score,
+                    pauseCount,
+                    distractionCount: distractions,
+                    achievementIds
+                  };
+
+                  setSessionSummary(summary);
+                  setEarnedAchievements(achievements);
+                  setIsCompletionActive(true);
+
+                  autoSaveSession(summary);
+                }
               }
 
               sessionStartRef.current = null;
@@ -657,7 +848,7 @@ export default function FocusTimer() {
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };
-  }, [isRunning, mode, mission, sessionDuration, distractions, pauseCount, todayFocusMinutes, completedSessions, autoSaveSession, checkAchievements, isFlowStateActive, enterFlowStateRitual, breakFlowState, checkFlowAchievements]);
+  }, [isRunning, mode, mission, sessionDuration, distractions, pauseCount, todayFocusMinutes, completedSessions, autoSaveSession, checkAchievements, isFlowStateActive, enterFlowStateRitual, breakFlowState, checkFlowAchievements, isLockInActive, autoSaveLockInSession, interruptionEvents, fullscreenExits, tabSwitches]);
 
   const switchMode = useCallback((newMode: "focus" | "break") => {
     setIsRunning(false);
@@ -711,18 +902,36 @@ export default function FocusTimer() {
       if (isFlowStateActive) {
         breakFlowState();
       }
-      
-      saveFocusSession(
-        mission,
-        elapsed,
-        start,
-        end,
-        false,
-        distractions,
-        score,
-        pauseCount,
-        []
-      );
+
+      if (isLockInActive) {
+        autoSaveLockInSession({
+          mission,
+          lockDuration: sessionDuration,
+          focusTime: elapsed,
+          breakTime: 0,
+          completed: false,
+          focusScore: score,
+          distractionCount: distractions,
+          interruptionEvents,
+          fullscreenExits,
+          tabSwitches,
+          startedAt: start,
+          endedAt: end
+        });
+        setIsLockInActive(false);
+      } else {
+        saveFocusSession(
+          mission,
+          elapsed,
+          start,
+          end,
+          false,
+          distractions,
+          score,
+          pauseCount,
+          []
+        );
+      }
     }
 
     const defaultDur = mode === "focus" ? 25 * 60 : 5 * 60;
@@ -1144,8 +1353,8 @@ export default function FocusTimer() {
     const draw = () => {
       ctx.clearRect(0, 0, width, height);
 
-      // Slower particles during flow state mode
-      const speedMultiplier = isFlowStateActive ? 0.35 : 1.0;
+      // Slower particles during flow state / lock in mode
+      const speedMultiplier = isFlowStateActive || isLockInActive ? 0.35 : 1.0;
 
       particles.forEach((p) => {
         if (p.opacity < p.maxOpacity) {
@@ -1168,6 +1377,8 @@ export default function FocusTimer() {
         ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
         ctx.fillStyle = isFlowStateActive 
           ? `rgba(224, 242, 254, ${p.opacity * 1.2})` 
+          : isLockInActive
+          ? `rgba(254, 226, 226, ${p.opacity * 1.2})`
           : `rgba(255, 255, 255, ${p.opacity})`;
         ctx.fill();
       });
@@ -1181,7 +1392,7 @@ export default function FocusTimer() {
       cancelAnimationFrame(animationId);
       window.removeEventListener("resize", handleResize);
     };
-  }, [isFullFocusActive, isIntroCompleted, isFlowStateActive]);
+  }, [isFullFocusActive, isIntroCompleted, isFlowStateActive, isLockInActive]);
 
   // Phase 5 Completion Screen Animations
   useEffect(() => {
@@ -1230,7 +1441,7 @@ export default function FocusTimer() {
       const key = e.key.toLowerCase();
       const code = e.code;
 
-      if (key === "f") {
+      if (key === "f" && !isLockInActive) { // Lock In prevents manual fullscreen toggle
         e.preventDefault();
         if (isFullFocusActive) {
           exitFullFocus();
@@ -1244,10 +1455,10 @@ export default function FocusTimer() {
         if (code === "Space") {
           e.preventDefault();
           toggleTimer();
-        } else if (key === "r" && !isFlowStateActive) { // Cannot reset while in flow
+        } else if (key === "r" && !isFlowStateActive && !isLockInActive) {
           e.preventDefault();
           resetTimer();
-        } else if (key === "s" && !isFlowStateActive) { // Cannot skip break while in flow
+        } else if (key === "s" && !isFlowStateActive && !isLockInActive) {
           e.preventDefault();
           if (mode === "break") {
             skipBreak();
@@ -1280,6 +1491,7 @@ export default function FocusTimer() {
     toggleMute,
     isCompletionActive,
     isFlowStateActive,
+    isLockInActive,
   ]);
 
   // Auto-hiding Controls (4-Second mouse inactivity)
@@ -1326,6 +1538,13 @@ export default function FocusTimer() {
     return hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`;
   };
 
+  const getInterruptionReminder = () => {
+    if (distractions === 1) return "Stay Focused";
+    if (distractions === 2) return "Distractions Slow Progress";
+    if (distractions === 3) return "Return To Deep Work";
+    return "Lock In Again";
+  };
+
   const getFlowStabilityMeter = () => {
     if (distractions === 0) return { bar: "█████████████", label: "Excellent", color: "text-sky-400" };
     if (distractions === 1) return { bar: "█████████░░░░", label: "Stable", color: "text-white/70" };
@@ -1345,6 +1564,7 @@ export default function FocusTimer() {
     setPauseCount(0);
     sessionStartRef.current = null;
     setFlowReflectText("");
+    setCompletedSessionType("normal");
   };
 
   const handleTakeBreak = () => {
@@ -1358,6 +1578,7 @@ export default function FocusTimer() {
     setPauseCount(0);
     sessionStartRef.current = null;
     setFlowReflectText("");
+    setCompletedSessionType("normal");
 
     setTimeout(() => {
       setIsRunning(true);
@@ -1367,13 +1588,195 @@ export default function FocusTimer() {
   const handleReturnToDashboard = () => {
     setIsCompletionActive(false);
     setFlowReflectText("");
+    setCompletedSessionType("normal");
     exitFullFocus();
   };
 
   const handleRetrySave = () => {
     if (sessionSummary) {
-      autoSaveSession(sessionSummary);
+      if (completedSessionType === "lock-in") {
+        autoSaveLockInSession(sessionSummary);
+      } else {
+        autoSaveSession(sessionSummary);
+      }
     }
+  };
+
+  // Phase 7 Action Button Handlers
+  const handleBeginLockIn = async () => {
+    setShowLockInModal(false);
+    setLockInStep(1);
+
+    const durSeconds = selectedLockDuration * 60;
+    setSessionDuration(durSeconds);
+    setTimeLeft(durSeconds);
+    setMode("focus");
+    setIsLocked(true);
+    setDistractions(0);
+    setPauseCount(0);
+    setFullscreenExits(0);
+    setTabSwitches(0);
+    setInterruptionEvents([]);
+
+    setIsLockInActive(true);
+    setCompletedSessionType("lock-in");
+
+    // Enter fullscreen commitment
+    setIsEntering(true);
+    try {
+      const container = fullscreenContainerRef.current as FullscreenElement;
+      if (container) {
+        if (container.requestFullscreen) {
+          await container.requestFullscreen();
+        } else if (container.webkitRequestFullscreen) {
+          await container.webkitRequestFullscreen();
+        } else if (container.mozRequestFullScreen) {
+          await container.mozRequestFullScreen();
+        } else if (container.msRequestFullscreen) {
+          await container.msRequestFullscreen();
+        }
+
+        setIsFullFocusActive(true);
+        setIsIntroCompleted(false);
+        setIsMissionRevealed(false);
+        setIsTimerRevealed(false);
+
+        // Start timer in background
+        setIsRunning(true);
+
+        if (selectedSound) {
+          audioSynthesizer.fadeAmbientIn(selectedSound, volumeRef.current, 4.0);
+        }
+
+        setRitualText("Loading Focus Environment...");
+        
+        // Full sequence entry
+        gsap.killTweensOf(swordLightRef.current);
+        gsap.fromTo(swordLightRef.current,
+          { left: "0%", opacity: 0 },
+          { left: "100%", opacity: 1, duration: 2.2, repeat: -1, ease: "power1.inOut" }
+        );
+
+        const messages = [
+          "Loading Focus Environment...",
+          "Locking Workspace Components...",
+          "Activating Anti-Procrastination Shields...",
+          "Deep Work Protocols Active...",
+          "Locked In Active"
+        ];
+
+        const fullTl = gsap.timeline({
+          onComplete: () => {
+            gsap.to(textRef.current, {
+              opacity: 0,
+              duration: 0.3,
+              onComplete: () => {
+                setRitualText("MISSION LOCKED");
+                
+                const missionLockTl = gsap.timeline({
+                  onComplete: () => {
+                    gsap.to(textRef.current, {
+                      opacity: 0,
+                      duration: 0.4,
+                      onComplete: () => {
+                        const revealTl = gsap.timeline({
+                          onComplete: () => {
+                            setIsIntroCompleted(true);
+                            setIsEntering(false);
+                          }
+                        });
+
+                        setIsMissionRevealed(true);
+                        revealTl.fromTo(missionRef.current,
+                          { opacity: 0, y: 12 },
+                          { opacity: 1, y: 0, duration: 0.6, ease: "power2.out" }
+                        )
+                        .delay(1.0)
+                        .to(swordImgRef.current, {
+                          opacity: 0,
+                          duration: 0.7,
+                          ease: "power2.inOut"
+                        })
+                        .call(() => {
+                          setIsTimerRevealed(true);
+                        })
+                        .fromTo(timerRevealRef.current,
+                          { opacity: 0, scale: 0.96 },
+                          { opacity: 1, scale: 1, duration: 0.6, ease: "back.out(1.1)" },
+                          "-=0.3"
+                        );
+                      }
+                    });
+                  }
+                });
+
+                missionLockTl.fromTo(textRef.current,
+                  { opacity: 0, y: 5 },
+                  { opacity: 1, y: 0, duration: 0.35, ease: "power2.out" }
+                )
+                .delay(0.8);
+              }
+            });
+          }
+        });
+
+        messages.forEach((msg, idx) => {
+          fullTl.call(() => setRitualText(msg))
+            .fromTo(textRef.current,
+              { opacity: 0, filter: "blur(6px)", y: 8 },
+              { opacity: 1, filter: "blur(0px)", y: 0, duration: 0.22, ease: "power2.out" }
+            )
+            .to(textRef.current,
+              { opacity: 0, filter: "blur(6px)", y: -8, duration: 0.2, ease: "power2.in", delay: 0.16 }
+            );
+
+          if (idx === 4) {
+            fullTl.call(() => audioSynthesizer.playRitualChime(), undefined, "-=0.2")
+              .to(textRef.current, { delay: 0.7 });
+          }
+        });
+      }
+    } catch (e) {
+      console.error("Failed to enter fullscreen on begin lock-in:", e);
+      setIsEntering(false);
+    }
+  };
+
+  const handleRefocusReturn = async () => {
+    let durationAway = 0;
+    if (leftTimeRef.current) {
+      durationAway = Math.round((Date.now() - leftTimeRef.current) / 1000);
+      leftTimeRef.current = null;
+    }
+
+    setInterruptionEvents((prev) => {
+      if (prev.length === 0) return prev;
+      const copy = [...prev];
+      copy[copy.length - 1] = {
+        ...copy[copy.length - 1],
+        durationAway
+      };
+      return copy;
+    });
+
+    try {
+      const container = fullscreenContainerRef.current as FullscreenElement;
+      if (container && !document.fullscreenElement) {
+        if (container.requestFullscreen) {
+          await container.requestFullscreen();
+        } else if (container.webkitRequestFullscreen) {
+          await container.webkitRequestFullscreen();
+        } else if (container.mozRequestFullScreen) {
+          await container.mozRequestFullScreen();
+        } else if (container.msRequestFullscreen) {
+          await container.msRequestFullscreen();
+        }
+      }
+    } catch (e) {
+      console.error("Failed to re-enter fullscreen on refocus:", e);
+    }
+
+    setShowWelcomeBack(false);
   };
 
   return (
@@ -1548,25 +1951,37 @@ export default function FocusTimer() {
           )}
         </div>
 
-        {/* Enter Focus Mode Trigger Button */}
-        <button
-          onClick={enterFullFocus}
-          disabled={!mission.trim() || isEntering}
-          className="w-full mt-4 py-2.5 border border-white/10 hover:border-white/30 text-white font-orbitron text-[9px] tracking-[0.2em] uppercase hover:bg-white hover:text-black transition-all duration-300 rounded flex items-center justify-center gap-2 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-        >
-          <Maximize2 className="w-3 h-3" /> Enter Focus Mode
-        </button>
+        {/* Actions Trigger Buttons */}
+        <div className="w-full mt-4 flex flex-col gap-2">
+          <button
+            onClick={enterFullFocus}
+            disabled={!mission.trim() || isEntering}
+            className="w-full py-2.5 border border-white/10 hover:border-white/30 text-white font-orbitron text-[9px] tracking-[0.2em] uppercase hover:bg-white hover:text-black transition-all duration-300 rounded flex items-center justify-center gap-2 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            <Maximize2 className="w-3 h-3" /> Enter Focus Mode
+          </button>
+
+          <button
+            onClick={() => setShowLockInModal(true)}
+            disabled={!mission.trim() || isEntering}
+            className="w-full py-2.5 border border-red-500/20 hover:border-red-500/40 hover:bg-red-500/10 text-red-400 font-orbitron text-[9px] tracking-[0.2em] uppercase transition-all duration-300 rounded flex items-center justify-center gap-2 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            🛡 Lock In (Emergency Lock)
+          </button>
+        </div>
       </div>
 
       {/* 2. FULL FOCUS MODE OVERLAY VIEW */}
       {isFullFocusActive && (
         <div className={`fixed inset-0 w-screen h-screen bg-black z-50 flex flex-col items-center justify-center select-none overflow-hidden font-inter transition-all duration-1000 ${
-          isFlowStateActive ? "border-t border-sky-400/20" : ""
+          isFlowStateActive ? "border-t border-sky-400/20" : isLockInActive ? "border-t border-red-500/20" : ""
         }`}>
           {/* Subtle slow breathing background gradient */}
           <div className={`absolute inset-0 transition-opacity duration-1000 ${
             isFlowStateActive 
               ? "bg-[radial-gradient(circle_at_center,rgba(8,47,73,0.3)_0%,#000000_100%)]" 
+              : isLockInActive
+              ? "bg-[radial-gradient(circle_at_center,rgba(69,10,10,0.25)_0%,#000000_100%)]"
               : "bg-[radial-gradient(circle_at_center,rgba(15,15,15,0.85)_0%,#000000_100%)]"
           }`} />
 
@@ -1625,27 +2040,27 @@ export default function FocusTimer() {
                     className="w-full h-auto opacity-95"
                   >
                     <defs>
-                      <linearGradient id="ff-blade-top-p5" x1="0" y1="0" x2="0" y2="1">
+                      <linearGradient id="ff-blade-top-p7" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="0%" stopColor="#ffffff" />
                         <stop offset="100%" stopColor="#b5b5b5" />
                       </linearGradient>
-                      <linearGradient id="ff-blade-bottom-p5" x1="0" y1="0" x2="0" y2="1">
+                      <linearGradient id="ff-blade-bottom-p7" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="0%" stopColor="#8c8c8c" />
                         <stop offset="100%" stopColor="#555555" />
                       </linearGradient>
-                      <linearGradient id="ff-metal-bright-p5" x1="0" y1="0" x2="1" y2="0">
+                      <linearGradient id="ff-metal-bright-p7" x1="0" y1="0" x2="1" y2="0">
                         <stop offset="0%" stopColor="#7a7a7a" />
                         <stop offset="50%" stopColor="#ffffff" />
                         <stop offset="100%" stopColor="#7a7a7a" />
                       </linearGradient>
-                      <linearGradient id="ff-hilt-grad-p5" x1="0" y1="0" x2="0" y2="1">
+                      <linearGradient id="ff-hilt-grad-p7" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="0%" stopColor="#dcdcdc" />
                         <stop offset="50%" stopColor="#aaaaaa" />
                         <stop offset="100%" stopColor="#444444" />
                       </linearGradient>
                     </defs>
-                    <circle cx="20" cy="12" r="3.5" fill="url(#ff-metal-bright-p5)" stroke="#3a3a3a" strokeWidth="0.5" />
-                    <rect x="23.5" y="10.5" width="46.5" height="3" rx="1" fill="url(#ff-hilt-grad-p5)" />
+                    <circle cx="20" cy="12" r="3.5" fill="url(#ff-metal-bright-p7)" stroke="#3a3a3a" strokeWidth="0.5" />
+                    <rect x="23.5" y="10.5" width="46.5" height="3" rx="1" fill="url(#ff-hilt-grad-p7)" />
                     <line x1="33" y1="10.5" x2="33" y2="13.5" stroke="#3a3a3a" strokeWidth="0.5" />
                     <line x1="43" y1="10.5" x2="43" y2="13.5" stroke="#3a3a3a" strokeWidth="0.5" />
                     <line x1="53" y1="10.5" x2="53" y2="13.5" stroke="#3a3a3a" strokeWidth="0.5" />
@@ -1656,14 +2071,14 @@ export default function FocusTimer() {
                       width="5"
                       height="16"
                       rx="1"
-                      fill="url(#ff-metal-bright-p5)"
+                      fill="url(#ff-metal-bright-p7)"
                       stroke="#3a3a3a"
                       strokeWidth="0.5"
                     />
                     <rect x="71.5" y="10.5" width="2" height="3" fill="#ffffff" />
-                    <rect x="75" y="9.5" width="8" height="5" fill="url(#ff-hilt-grad-p5)" />
-                    <path d="M83 9.5 L460 9.5 L480 12 L83 12 Z" fill="url(#ff-blade-top-p5)" />
-                    <path d="M83 12 L480 12 L460 14.5 L83 14.5 Z" fill="url(#ff-blade-bottom-p5)" />
+                    <rect x="75" y="9.5" width="8" height="5" fill="url(#ff-hilt-grad-p7)" />
+                    <path d="M83 9.5 L460 9.5 L480 12 L83 12 Z" fill="url(#ff-blade-top-p7)" />
+                    <path d="M83 12 L480 12 L460 14.5 L83 14.5 Z" fill="url(#ff-blade-bottom-p7)" />
                   </svg>
                 </div>
               </div>
@@ -1707,12 +2122,12 @@ export default function FocusTimer() {
               {/* TOP CENTER: MISSION */}
               <div className="absolute top-12 left-1/2 -translate-x-1/2 text-center flex flex-col items-center gap-1 z-20">
                 <span className={`font-orbitron uppercase text-[9px] tracking-[0.3em] transition-colors duration-1000 ${
-                  isFlowStateActive ? "text-sky-400/40" : "text-white/30"
+                  isLockInActive ? "text-red-400/40" : isFlowStateActive ? "text-sky-400/40" : "text-white/30"
                 }`}>
-                  {isFlowStateActive ? "FLOW STATE" : "MISSION"}
+                  {isLockInActive ? "LOCK IN ACTIVE" : isFlowStateActive ? "FLOW STATE" : "MISSION"}
                 </span>
                 <h2 className={`font-orbitron uppercase text-xl sm:text-2xl tracking-[0.1em] font-extrabold transition-colors duration-1000 max-w-lg leading-relaxed ${
-                  isFlowStateActive ? "text-sky-100 text-sky-glow" : "text-white text-glow"
+                  isLockInActive ? "text-red-300 text-red-glow animate-pulse" : isFlowStateActive ? "text-sky-100 text-sky-glow" : "text-white text-glow"
                 }`}>
                   {mission}
                 </h2>
@@ -1722,24 +2137,26 @@ export default function FocusTimer() {
               <div className="flex flex-col items-center justify-center flex-1 max-w-xl text-center z-20">
                 {/* Huge Countdown Timer */}
                 <h1 className={`font-mono text-8xl sm:text-9xl md:text-[11rem] tracking-widest select-none leading-none transition-colors duration-1000 ${
-                  isFlowStateActive ? "text-sky-200 text-sky-glow" : "text-white text-glow"
+                  isLockInActive ? "text-red-200 text-red-glow" : isFlowStateActive ? "text-sky-200 text-sky-glow" : "text-white text-glow"
                 }`}>
                   {formatTime(timeLeft)}
                 </h1>
 
                 <span className={`font-orbitron text-xs font-bold tracking-widest uppercase mt-4 block transition-colors duration-1000 ${
-                  isFlowStateActive ? "text-sky-300/80 text-sky-glow" : "text-white text-glow"
+                  isLockInActive ? "text-red-400 text-red-glow" : isFlowStateActive ? "text-sky-300/80 text-sky-glow" : "text-white text-glow"
                 }`}>
-                  {isFlowStateActive ? "IMMERSIVE FLOW STABLE" : mode === "focus" ? "Deep Focus Active" : "Refueling Active"}
+                  {isLockInActive ? "EMERGENCY LOCK APPLIED" : isFlowStateActive ? "IMMERSIVE FLOW STABLE" : mode === "focus" ? "Deep Focus Active" : "Refueling Active"}
                 </span>
 
                 {/* Sleek Glowing Progress Bar */}
                 <div className={`w-64 sm:w-80 h-[2px] rounded-full overflow-hidden mt-8 relative shadow-[0_0_10px_rgba(255,255,255,0.05)] transition-colors duration-1000 ${
-                  isFlowStateActive ? "bg-sky-950" : "bg-white/10"
+                  isLockInActive ? "bg-red-950" : isFlowStateActive ? "bg-sky-950" : "bg-white/10"
                 }`}>
                   <div
                     className={`h-full transition-all duration-300 ease-linear ${
-                      isFlowStateActive 
+                      isLockInActive
+                        ? "bg-red-500 shadow-[0_0_12px_rgba(239,68,68,0.95)]"
+                        : isFlowStateActive 
                         ? "bg-sky-300 shadow-[0_0_12px_rgba(125,211,252,0.95)]" 
                         : "bg-white shadow-[0_0_8px_rgba(255,255,255,0.95)]"
                     }`}
@@ -1764,13 +2181,13 @@ export default function FocusTimer() {
               <div
                 className={`absolute right-12 top-1/2 -translate-y-1/2 w-64 bg-black/40 border backdrop-blur-md p-6 rounded-lg flex flex-col gap-4 z-30 transition-all duration-1000 shadow-[0_0_25px_rgba(0,0,0,0.6)] ${
                   showControls ? "opacity-100" : "opacity-0 pointer-events-none"
-                } ${isFlowStateActive ? "border-sky-500/10" : "border-white/5"}`}
+                } ${isLockInActive ? "border-red-500/10" : isFlowStateActive ? "border-sky-500/10" : "border-white/5"}`}
               >
-                <div className={`pb-2 border-b ${isFlowStateActive ? "border-sky-500/10" : "border-white/5"}`}>
+                <div className={`pb-2 border-b ${isLockInActive ? "border-red-500/10" : isFlowStateActive ? "border-sky-500/10" : "border-white/5"}`}>
                   <span className={`font-orbitron uppercase text-[9px] tracking-widest transition-colors duration-1000 ${
-                    isFlowStateActive ? "text-sky-400" : "text-white/40"
+                    isLockInActive ? "text-red-400" : isFlowStateActive ? "text-sky-400" : "text-white/40"
                   }`}>
-                    {isFlowStateActive ? "FLOW METRICS" : "Live Statistics"}
+                    {isLockInActive ? "COMMITMENT STATS" : isFlowStateActive ? "FLOW METRICS" : "Live Statistics"}
                   </span>
                 </div>
 
@@ -1797,7 +2214,9 @@ export default function FocusTimer() {
 
                   <div className="flex justify-between items-center text-xs">
                     <span className="font-mono text-white/40 uppercase text-[9px] tracking-wider">Distractions</span>
-                    <span className="font-mono text-white font-bold text-red-400">{distractions}</span>
+                    <span className={`font-mono font-bold text-xs ${distractions > 0 ? "text-red-400" : "text-white"}`}>
+                      {distractions}
+                    </span>
                   </div>
 
                   {isFlowStateActive && (
@@ -1807,6 +2226,19 @@ export default function FocusTimer() {
                         {formatFlowTime(flowTime)}
                       </span>
                     </div>
+                  )}
+
+                  {isLockInActive && (
+                    <>
+                      <div className="flex justify-between items-center text-xs pt-2 border-t border-red-500/10">
+                        <span className="font-mono text-white/40 uppercase text-[9px] tracking-wider">Tab Switches</span>
+                        <span className="font-mono text-white font-bold">{tabSwitches}</span>
+                      </div>
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="font-mono text-white/40 uppercase text-[9px] tracking-wider">FS Exits</span>
+                        <span className="font-mono text-white font-bold">{fullscreenExits}</span>
+                      </div>
+                    </>
                   )}
                 </div>
               </div>
@@ -1827,7 +2259,9 @@ export default function FocusTimer() {
                         onClick={() => handleSoundSelect(sound)}
                         className={`px-2 py-1 border text-[9px] font-mono uppercase tracking-wider rounded transition-all cursor-pointer ${
                           selectedSound === sound
-                            ? isFlowStateActive 
+                            ? isLockInActive
+                              ? "bg-red-400 text-black border-red-400 font-bold"
+                              : isFlowStateActive 
                               ? "bg-sky-300 text-black border-sky-300 font-bold" 
                               : "bg-white text-black border-white font-bold"
                             : "border-white/5 text-white/40 hover:text-white/70 hover:border-white/20"
@@ -1865,7 +2299,9 @@ export default function FocusTimer() {
                   <button
                     onClick={toggleTimer}
                     className={`w-12 h-12 flex items-center justify-center rounded-full transition-all active:scale-95 cursor-pointer ${
-                      isFlowStateActive 
+                      isLockInActive
+                        ? "bg-red-500 hover:bg-red-400 text-white shadow-[0_0_20px_rgba(239,68,68,0.35)]"
+                        : isFlowStateActive 
                         ? "bg-sky-200 hover:bg-sky-100 text-black shadow-[0_0_20px_rgba(125,211,252,0.35)]" 
                         : "bg-white hover:bg-neutral-200 text-black shadow-[0_0_15px_rgba(255,255,255,0.15)]"
                     }`}
@@ -1878,8 +2314,8 @@ export default function FocusTimer() {
                     )}
                   </button>
 
-                  {/* Reset (Hidden in Flow State) */}
-                  {!isFlowStateActive && (
+                  {/* Reset (Hidden in Flow State / Lock In) */}
+                  {!isFlowStateActive && !isLockInActive && (
                     <button
                       onClick={resetTimer}
                       className="p-2.5 border border-white/5 hover:border-white/20 text-white/40 hover:text-white transition-all rounded-full cursor-pointer"
@@ -1898,8 +2334,8 @@ export default function FocusTimer() {
                     <Square className="w-4 h-4 fill-current" />
                   </button>
 
-                  {/* Skip Break (Hidden in Flow State) */}
-                  {mode === "break" && !isFlowStateActive && (
+                  {/* Skip Break (Hidden in Flow / Lock In) */}
+                  {mode === "break" && !isFlowStateActive && !isLockInActive && (
                     <button
                       onClick={skipBreak}
                       className="px-3 py-1.5 border border-white/10 text-white font-orbitron uppercase text-[9px] tracking-widest hover:bg-white hover:text-black transition-all rounded cursor-pointer"
@@ -1909,9 +2345,9 @@ export default function FocusTimer() {
                   )}
                 </div>
 
-                {/* Exit Focus Mode (Right - Hidden in Flow State) */}
+                {/* Exit Focus Mode (Right - Hidden in Flow / Lock In) */}
                 <div className="w-64 flex justify-end">
-                  {!isFlowStateActive && (
+                  {!isFlowStateActive && !isLockInActive && (
                     <button
                       onClick={exitFullFocus}
                       className="px-4 py-2 border border-white/10 text-white font-orbitron uppercase text-[9px] tracking-widest hover:bg-white hover:text-black hover:border-white transition-all duration-300 flex items-center gap-2 cursor-pointer"
@@ -1961,16 +2397,18 @@ export default function FocusTimer() {
             {/* Title Header */}
             <div ref={compTitleRef} className="text-center flex flex-col items-center gap-2">
               <span className={`font-orbitron uppercase text-[11px] tracking-[0.4em] block animate-pulse ${
-                isFlowStateActive ? "text-sky-400/50" : "text-white/30"
+                completedSessionType === "lock-in" ? "text-red-400/50" : isFlowStateActive ? "text-sky-400/50" : "text-white/30"
               }`}>
-                {isFlowStateActive ? "Flow Mode Engaged" : "Operation Successful"}
+                {completedSessionType === "lock-in" ? "Commitment Fulfilled" : isFlowStateActive ? "Flow Mode Engaged" : "Operation Successful"}
               </span>
               <h1 className={`font-orbitron uppercase text-3xl sm:text-4xl font-extrabold tracking-[0.2em] ${
-                isFlowStateActive ? "text-sky-100 text-sky-glow" : "text-white text-glow"
+                completedSessionType === "lock-in" ? "text-red-400 text-glow animate-pulse" : isFlowStateActive ? "text-sky-100 text-sky-glow" : "text-white text-glow"
               }`}>
-                {isFlowStateActive ? "FLOW MAINTAINED" : "MISSION COMPLETE"}
+                {completedSessionType === "lock-in" ? "LOCK IN COMPLETE" : isFlowStateActive ? "FLOW MAINTAINED" : "MISSION COMPLETE"}
               </h1>
-              <div className={`w-24 h-[1px] mt-3 ${isFlowStateActive ? "bg-sky-500/20" : "bg-white/20"}`} />
+              <div className={`w-24 h-[1px] mt-3 ${
+                completedSessionType === "lock-in" ? "bg-red-500/20" : isFlowStateActive ? "bg-sky-500/20" : "bg-white/20"
+              }`} />
             </div>
 
             {/* Session Summary & Analytics Grid */}
@@ -2004,7 +2442,9 @@ export default function FocusTimer() {
               </div>
 
               {/* Focus Score Card (Highlighted) */}
-              <div className="bg-white/[0.03] border border-white/10 p-5 rounded-lg flex flex-col justify-between relative overflow-hidden group shadow-[0_0_15px_rgba(255,255,255,0.02)]">
+              <div className={`border p-5 rounded-lg flex flex-col justify-between relative overflow-hidden group shadow-[0_0_15px_rgba(255,255,255,0.02)] ${
+                completedSessionType === "lock-in" ? "bg-red-950/10 border-red-500/20" : "bg-white/[0.03] border-white/10"
+              }`}>
                 <div className="absolute top-0 right-0 w-32 h-32 bg-white/[0.01] rounded-full blur-xl pointer-events-none" />
                 <div>
                   <span className="font-orbitron uppercase text-[9px] tracking-wider text-white/40 block mb-1">Focus Score</span>
@@ -2042,7 +2482,9 @@ export default function FocusTimer() {
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-center">
                   <div className="flex flex-col p-3 bg-white/[0.01] border border-white/[0.02] rounded">
                     <span className="font-mono text-white/30 uppercase text-[8px] tracking-wider mb-1">Focus Time</span>
-                    <span className="font-mono text-sm text-white font-bold">25 min</span>
+                    <span className="font-mono text-sm text-white font-bold">
+                      {Math.round((sessionSummary ? ("focusDuration" in sessionSummary ? sessionSummary.focusDuration : sessionSummary.focusTime) : 0) / 60)} min
+                    </span>
                   </div>
 
                   <div className="flex flex-col p-3 bg-white/[0.01] border border-white/[0.02] rounded">
@@ -2052,7 +2494,9 @@ export default function FocusTimer() {
 
                   <div className="flex flex-col p-3 bg-white/[0.01] border border-white/[0.02] rounded">
                     <span className="font-mono text-white/30 uppercase text-[8px] tracking-wider mb-1">Pauses</span>
-                    <span className="font-mono text-sm text-white font-bold">{sessionSummary?.pauseCount}</span>
+                    <span className="font-mono text-sm text-white font-bold">
+                      {sessionSummary ? ("pauseCount" in sessionSummary ? sessionSummary.pauseCount : 0) : 0}
+                    </span>
                   </div>
 
                   <div className="flex flex-col p-3 bg-white/[0.01] border border-white/[0.02] rounded">
@@ -2065,6 +2509,19 @@ export default function FocusTimer() {
                   <span className="font-mono text-white/40 uppercase text-[9px] tracking-wider">Today&apos;s Focus Total</span>
                   <span className="font-mono text-white font-bold">{formatTodayFocus(todayFocusMinutes)}</span>
                 </div>
+
+                {completedSessionType === "lock-in" && (
+                  <div className="grid grid-cols-2 gap-4 pt-2 border-t border-white/5 text-[10px] font-mono text-white/55">
+                    <div className="flex justify-between">
+                      <span>Fullscreen Exits</span>
+                      <span className="text-white font-bold">{fullscreenExits}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Tab Switches</span>
+                      <span className="text-white font-bold">{tabSwitches}</span>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Achievements Unlocked Card */}
@@ -2076,7 +2533,9 @@ export default function FocusTimer() {
                       <div
                         key={ach.id}
                         className={`border px-3 py-2 rounded flex items-center gap-2 hover:bg-white/[0.06] transition-all duration-300 shadow-[0_0_10px_rgba(255,255,255,0.01)] ${
-                          ach.id.includes("flow") || ach.id === "entered_flow" 
+                          ach.id.includes("lock") || ach.id === "locked_in"
+                            ? "bg-red-950/15 border-red-500/20"
+                            : ach.id.includes("flow") || ach.id === "entered_flow" 
                             ? "bg-sky-950/20 border-sky-500/20" 
                             : "bg-white/[0.03] border-white/10"
                         }`}
@@ -2085,7 +2544,11 @@ export default function FocusTimer() {
                         <span className="text-base shrink-0">{ach.icon}</span>
                         <div className="flex flex-col">
                           <span className={`font-orbitron text-[9px] tracking-wider font-bold uppercase ${
-                            ach.id.includes("flow") || ach.id === "entered_flow" ? "text-sky-300" : "text-white"
+                            ach.id.includes("lock") || ach.id === "locked_in"
+                              ? "text-red-300"
+                              : ach.id.includes("flow") || ach.id === "entered_flow" 
+                              ? "text-sky-300" 
+                              : "text-white"
                           }`}>
                             {ach.title}
                           </span>
@@ -2113,14 +2576,14 @@ export default function FocusTimer() {
                   <div className="w-4 h-4 bg-white text-black flex items-center justify-center rounded-full text-[9px] font-bold shrink-0 shadow-[0_0_8px_rgba(255,255,255,0.5)]">
                     ✓
                   </div>
-                  <span className="font-mono text-[10px] tracking-wider text-white/70 uppercase font-bold">
+                  <span className="font-mono text-[10px] tracking-wider text-white/70 uppercase font-bold font-mono">
                     Session Saved Successfully
                   </span>
                 </>
               )}
               {saveStatus === "error" && (
                 <>
-                  <span className="font-mono text-[10px] tracking-wider text-red-400 uppercase shrink-0">
+                  <span className="font-mono text-[10px] tracking-wider text-red-400 uppercase shrink-0 font-mono">
                     Failed to Sync Session Stats
                   </span>
                   <button
@@ -2139,7 +2602,7 @@ export default function FocusTimer() {
                 onClick={handleStartNextSession}
                 className="px-6 py-2.5 bg-white text-black font-orbitron uppercase text-[10px] tracking-widest hover:bg-neutral-200 transition-all font-extrabold shadow-[0_0_15px_rgba(255,255,255,0.15)] cursor-pointer"
               >
-                {isFlowStateActive ? "Continue Flow State" : "Start Next Focus Session"}
+                Start Next Focus Session
               </button>
 
               <button
@@ -2188,6 +2651,136 @@ export default function FocusTimer() {
             <p className="font-inter text-xs text-white/40 mt-1">
               Returning to Normal Focus Mode...
             </p>
+          </div>
+        </div>
+      )}
+
+      {/* 7. EMERGENCY LOCK WELCOME BACK OVERLAY VIEW */}
+      {showWelcomeBack && (
+        <div className="fixed inset-0 w-screen h-screen bg-black/95 z-[130] flex flex-col items-center justify-center select-none overflow-hidden font-inter">
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(15,15,15,0.95)_0%,#000000_100%)] pointer-events-none" />
+          <div className="w-full max-w-md flex flex-col items-center text-center gap-6 z-20">
+            <span className="font-orbitron uppercase text-[9px] tracking-[0.4em] text-red-500 block animate-pulse">
+              {getInterruptionReminder()}
+            </span>
+            <h2 className="font-orbitron uppercase text-3xl font-extrabold tracking-[0.1em] text-white text-glow">
+              Welcome Back
+            </h2>
+            <p className="font-inter text-xs text-white/55 max-w-xs leading-relaxed">
+              Let&apos;s continue your mission. Resisting distractions makes discipline permanent.
+            </p>
+
+            <div className="py-3 px-6 bg-white/[0.02] border border-white/5 rounded-lg flex flex-col gap-1 w-full max-w-[240px]">
+              <span className="font-mono text-[9px] text-white/30 uppercase">Time Remaining</span>
+              <span className="font-mono text-xl text-white font-bold tracking-widest">
+                {formatTime(timeLeft)}
+              </span>
+            </div>
+
+            <button
+              onClick={handleRefocusReturn}
+              className="mt-2 px-8 py-3 bg-white text-black font-orbitron uppercase text-[10px] tracking-widest hover:bg-neutral-200 transition-all font-extrabold shadow-[0_0_15px_rgba(255,255,255,0.15)] cursor-pointer"
+            >
+              Resume Focus
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 8. EMERGENCY LOCK IN SELECTOR MODAL */}
+      {showLockInModal && (
+        <div className="fixed inset-0 w-screen h-screen bg-black/80 z-[140] flex items-center justify-center p-4 backdrop-blur-sm select-none font-inter">
+          <div className="w-full max-w-md bg-neutral-950 border border-white/10 p-6 rounded-lg shadow-[0_0_50px_rgba(0,0,0,0.8)] relative">
+            <button
+              onClick={() => {
+                setShowLockInModal(false);
+                setLockInStep(1);
+              }}
+              className="absolute top-4 right-4 text-white/40 hover:text-white transition-colors cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            {lockInStep === 1 ? (
+              <div className="flex flex-col gap-4">
+                <div className="text-center pb-2 border-b border-white/5">
+                  <span className="font-orbitron uppercase text-[9px] tracking-[0.3em] text-red-500 block animate-pulse mb-1">
+                    Emergency Lock
+                  </span>
+                  <h3 className="font-orbitron uppercase text-lg font-extrabold text-white tracking-wide">
+                    LOCK IN PROTOCOL
+                  </h3>
+                  <p className="font-inter text-xs text-white/40 mt-1">
+                    Commit to uninterrupted deep work.
+                  </p>
+                </div>
+
+                <div className="flex flex-col gap-2">
+                  <label className="font-orbitron uppercase text-[9px] tracking-widest text-white/40">Select Duration</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {[30, 45, 60, 90].map((dur) => (
+                      <button
+                        key={dur}
+                        onClick={() => {
+                          setSelectedLockDuration(dur);
+                          setLockInStep(2);
+                        }}
+                        className="py-3 border border-white/5 hover:border-white/20 hover:bg-white/[0.02] text-white font-mono text-sm rounded transition-all cursor-pointer"
+                      >
+                        {dur} Minutes
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-4">
+                <div className="text-center pb-2 border-b border-white/5">
+                  <span className="font-orbitron uppercase text-[9px] tracking-[0.3em] text-red-500 block animate-pulse mb-1">
+                    Confirmation
+                  </span>
+                  <h3 className="font-orbitron uppercase text-base font-extrabold text-white tracking-wide">
+                    REVIEW COMMITMENT
+                  </h3>
+                </div>
+
+                <div className="flex flex-col gap-3 text-xs bg-white/[0.01] border border-white/5 p-4 rounded">
+                  <div className="flex justify-between items-baseline">
+                    <span className="font-mono text-white/30 uppercase text-[9px] tracking-wider">Mission</span>
+                    <span className="font-orbitron uppercase font-bold text-white max-w-[200px] text-right truncate">
+                      {mission}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="font-mono text-white/30 uppercase text-[9px] tracking-wider">Duration</span>
+                    <span className="font-mono text-white font-bold">{selectedLockDuration} Minutes</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="font-mono text-white/30 uppercase text-[9px] tracking-wider">Ambient Loop</span>
+                    <span className="font-mono text-white font-bold uppercase">{selectedSound || "None"}</span>
+                  </div>
+                </div>
+
+                <p className="font-inter text-[11px] leading-relaxed text-white/50 text-center italic">
+                  &ldquo;During this session your workspace will remain distraction-free. Leaving Full Focus Mode or switching tabs will be recorded as interruptions.&rdquo;
+                </p>
+
+                <div className="grid grid-cols-2 gap-3 mt-2">
+                  <button
+                    onClick={() => setLockInStep(1)}
+                    className="py-2.5 border border-white/5 hover:border-white/20 text-white/60 font-orbitron uppercase text-[9px] tracking-widest rounded transition-all cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleBeginLockIn}
+                    className="py-2.5 bg-red-600 hover:bg-red-500 text-white font-orbitron uppercase text-[9px] tracking-widest font-extrabold shadow-[0_0_15px_rgba(239,68,68,0.25)] rounded transition-all cursor-pointer"
+                  >
+                    Begin Lock In
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
