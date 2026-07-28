@@ -17,6 +17,35 @@ interface FullscreenDocument extends Document {
   msExitFullscreen?: () => Promise<void>;
 }
 
+interface Achievement {
+  id: string;
+  icon: string;
+  title: string;
+  description: string;
+}
+
+interface SessionSummary {
+  mission: string;
+  focusDuration: number;
+  breakDuration: number;
+  startedAt: Date;
+  endedAt: Date;
+  completed: boolean;
+  focusScore: number;
+  pauseCount: number;
+  distractionCount: number;
+  achievementIds: string[];
+}
+
+const ACHIEVEMENTS: Achievement[] = [
+  { id: "first_session", icon: "🏆", title: "First Session", description: "Completed your first focus session." },
+  { id: "three_sessions", icon: "🔥", title: "3 Sessions Today", description: "Completed three focus sessions today." },
+  { id: "iron_discipline", icon: "⚔", title: "Iron Discipline", description: "Focused with zero pauses and distractions." },
+  { id: "flow_starter", icon: "⚡", title: "Flow Starter", description: "Focused for 25 minutes or more." },
+  { id: "deep_worker", icon: "🧠", title: "Deep Worker", description: "Focused for 50 minutes or more." },
+  { id: "no_distractions", icon: "💎", title: "No Distractions", description: "Completed a session with zero distractions." },
+];
+
 export default function FocusTimer() {
   const [mode, setMode] = useState<"focus" | "break">("focus");
   const [timeLeft, setTimeLeft] = useState(25 * 60);
@@ -25,6 +54,7 @@ export default function FocusTimer() {
   const [mission, setMission] = useState("");
   const [isLocked, setIsLocked] = useState(false);
   const [distractions, setDistractions] = useState(0);
+  const [pauseCount, setPauseCount] = useState(0);
   const [selectedSound, setSelectedSound] = useState<string | null>(null);
   const [volume, setVolume] = useState(0.5);
 
@@ -46,6 +76,12 @@ export default function FocusTimer() {
   const [isTimerRevealed, setIsTimerRevealed] = useState(false);
   const [isExitTransitionActive, setIsExitTransitionActive] = useState(false);
 
+  // Phase 5 Completion Overlay States
+  const [isCompletionActive, setIsCompletionActive] = useState(false);
+  const [sessionSummary, setSessionSummary] = useState<SessionSummary | null>(null);
+  const [earnedAchievements, setEarnedAchievements] = useState<Achievement[]>([]);
+  const [saveStatus, setSaveStatus] = useState<"saving" | "success" | "error">("saving");
+
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const sessionStartRef = useRef<Date | null>(null);
   const fullscreenContainerRef = useRef<HTMLDivElement | null>(null);
@@ -59,6 +95,12 @@ export default function FocusTimer() {
   const missionRef = useRef<HTMLDivElement | null>(null);
   const timerRevealRef = useRef<HTMLDivElement | null>(null);
   const exitOverlayRef = useRef<HTMLDivElement | null>(null);
+
+  // Phase 5 GSAP animation refs
+  const compOverlayRef = useRef<HTMLDivElement | null>(null);
+  const compTitleRef = useRef<HTMLDivElement | null>(null);
+  const compCardsRef = useRef<HTMLDivElement | null>(null);
+  const compActionsRef = useRef<HTMLDivElement | null>(null);
 
   const progress = (timeLeft / sessionDuration) * 100;
 
@@ -75,13 +117,16 @@ export default function FocusTimer() {
   }, [volume]);
 
   // Save session helper
-  const saveFocusSession = async (
+  const saveFocusSession = useCallback(async (
     missionText: string,
     dur: number,
     start: Date,
     end: Date,
     isCompleted: boolean,
-    distCount: number
+    distCount: number,
+    fScore = 0,
+    pCount = 0,
+    achIds: string[] = []
   ) => {
     try {
       const response = await fetch("/api/focus-sessions", {
@@ -95,6 +140,13 @@ export default function FocusTimer() {
           endedAt: end.toISOString(),
           completed: isCompleted,
           distractions: distCount,
+          focusScore: fScore,
+          pauseCount: pCount,
+          distractionCount: distCount,
+          achievementIds: achIds,
+          environment: selectedSound || "None",
+          volume,
+          deviceType: "Desktop"
         }),
       });
       if (response.ok) {
@@ -105,7 +157,7 @@ export default function FocusTimer() {
     } catch (err) {
       console.error("Error saving focus session:", err);
     }
-  };
+  }, [selectedSound, volume]);
 
   // Load state on mount
   useEffect(() => {
@@ -155,7 +207,10 @@ export default function FocusTimer() {
               new Date(endTime - duration * 1000),
               new Date(endTime),
               true,
-              parseInt(savedDistractions || "0", 10)
+              parseInt(savedDistractions || "0", 10),
+              100,
+              0,
+              ["first_session"]
             );
           }
         }
@@ -165,7 +220,7 @@ export default function FocusTimer() {
     }, 0);
 
     return () => clearTimeout(timer);
-  }, []);
+  }, [saveFocusSession]);
 
   // Save state updates to localStorage
   useEffect(() => {
@@ -231,6 +286,82 @@ export default function FocusTimer() {
     };
   }, []);
 
+  // Focus Score Calculator
+  const calculateFocusScore = (completed: boolean, pauses: number, interruptions: number): number => {
+    if (!completed) return 40;
+    let score = 100;
+    score -= pauses * 5;
+    score -= interruptions * 3;
+    return Math.max(10, Math.min(100, score));
+  };
+
+  // Check achievements triggered this session
+  const checkAchievements = useCallback((todayMins: number, duration: number, pauses: number, interruptions: number) => {
+    const list: Achievement[] = [];
+    
+    if (completedSessions === 0) {
+      list.push(ACHIEVEMENTS[0]);
+    }
+    
+    if (todayMins / 25 >= 2.0) {
+      list.push(ACHIEVEMENTS[1]);
+    }
+
+    if (pauses === 0 && interruptions === 0) {
+      list.push(ACHIEVEMENTS[2]);
+    }
+
+    if (duration >= 25 * 60) {
+      list.push(ACHIEVEMENTS[3]);
+    }
+
+    if (duration >= 50 * 60) {
+      list.push(ACHIEVEMENTS[4]);
+    }
+
+    if (interruptions === 0) {
+      list.push(ACHIEVEMENTS[5]);
+    }
+
+    return list;
+  }, [completedSessions]);
+
+  // Asynchronous auto save to MongoDB
+  const autoSaveSession = useCallback(async (summary: SessionSummary) => {
+    setSaveStatus("saving");
+    try {
+      const response = await fetch("/api/focus-sessions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          mission: summary.mission,
+          type: "focus",
+          duration: summary.focusDuration,
+          startedAt: summary.startedAt.toISOString(),
+          endedAt: summary.endedAt.toISOString(),
+          completed: summary.completed,
+          distractions: summary.distractionCount,
+          focusScore: summary.focusScore,
+          pauseCount: summary.pauseCount,
+          distractionCount: summary.distractionCount,
+          achievementIds: summary.achievementIds,
+          environment: selectedSound || "None",
+          volume,
+          deviceType: "Desktop"
+        }),
+      });
+
+      if (response.ok) {
+        setSaveStatus("success");
+        window.dispatchEvent(new Event("focusSessionSaved"));
+      } else {
+        setSaveStatus("error");
+      }
+    } catch {
+      setSaveStatus("error");
+    }
+  }, [selectedSound, volume]);
+
   // Timer Tick Engine
   useEffect(() => {
     if (isRunning) {
@@ -246,33 +377,45 @@ export default function FocusTimer() {
 
             if (mode === "focus") {
               audioSynthesizer.playFocusEnd();
+
+              // Calculate analytics locally
               const start = sessionStartRef.current || new Date(Date.now() - sessionDuration * 1000);
-              saveFocusSession(mission, sessionDuration, start, new Date(), true, distractions);
+              const end = new Date();
+              const score = calculateFocusScore(true, pauseCount, distractions);
+              const achievements = checkAchievements(todayFocusMinutes, sessionDuration, pauseCount, distractions);
+              const achievementIds = achievements.map((a) => a.id);
 
-              // Switch to Break
-              setMode("break");
-              const nextDur = 5 * 60;
-              setSessionDuration(nextDur);
-              setTimeLeft(nextDur);
-              setIsLocked(false);
-              setDistractions(0);
+              const summary = {
+                mission,
+                focusDuration: sessionDuration,
+                breakDuration: 5 * 60,
+                startedAt: start,
+                endedAt: end,
+                completed: true,
+                focusScore: score,
+                pauseCount,
+                distractionCount: distractions,
+                achievementIds
+              };
+
+              setSessionSummary(summary);
+              setEarnedAchievements(achievements);
+              setIsCompletionActive(true);
+
+              // Save automatically in the background
+              autoSaveSession(summary);
+
               sessionStartRef.current = null;
-
-              setTimeout(() => {
-                setIsRunning(true);
-              }, 100);
             } else {
               audioSynthesizer.playFocusStart();
-
-              // Switch to Focus
               setMode("focus");
               const nextDur = 25 * 60;
               setSessionDuration(nextDur);
               setTimeLeft(nextDur);
               setIsLocked(true);
               setDistractions(0);
+              setPauseCount(0);
               sessionStartRef.current = null;
-
               setTimeout(() => {
                 setIsRunning(true);
               }, 100);
@@ -290,7 +433,7 @@ export default function FocusTimer() {
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };
-  }, [isRunning, mode, mission, sessionDuration, distractions]);
+  }, [isRunning, mode, mission, sessionDuration, distractions, pauseCount, todayFocusMinutes, completedSessions, autoSaveSession, checkAchievements]);
 
   const switchMode = useCallback((newMode: "focus" | "break") => {
     setIsRunning(false);
@@ -300,6 +443,7 @@ export default function FocusTimer() {
     setTimeLeft(defaultDur);
     setIsLocked(false);
     setDistractions(0);
+    setPauseCount(0);
     sessionStartRef.current = null;
   }, []);
 
@@ -319,6 +463,7 @@ export default function FocusTimer() {
     } else {
       if (mode === "focus") {
         setDistractions((prev) => prev + 1);
+        setPauseCount((prev) => prev + 1);
       }
       if (isFullFocusActive) {
         audioSynthesizer.fadeAmbientOut(1.5);
@@ -336,7 +481,20 @@ export default function FocusTimer() {
     if (mode === "focus" && timeLeft < sessionDuration) {
       const elapsed = sessionDuration - timeLeft;
       const start = sessionStartRef.current || new Date(Date.now() - elapsed * 1000);
-      saveFocusSession(mission, elapsed, start, new Date(), false, distractions);
+      const end = new Date();
+      const score = calculateFocusScore(false, pauseCount, distractions);
+      
+      saveFocusSession(
+        mission,
+        elapsed,
+        start,
+        end,
+        false,
+        distractions,
+        score,
+        pauseCount,
+        []
+      );
     }
 
     const defaultDur = mode === "focus" ? 25 * 60 : 5 * 60;
@@ -344,6 +502,7 @@ export default function FocusTimer() {
     setSessionDuration(defaultDur);
     setIsLocked(false);
     setDistractions(0);
+    setPauseCount(0);
     sessionStartRef.current = null;
   };
 
@@ -357,6 +516,7 @@ export default function FocusTimer() {
     setSessionDuration(defaultDur);
     setIsLocked(false);
     setDistractions(0);
+    setPauseCount(0);
     sessionStartRef.current = null;
   }, [isFullFocusActive, mode]);
 
@@ -783,6 +943,42 @@ export default function FocusTimer() {
     };
   }, [isFullFocusActive, isIntroCompleted]);
 
+  // Phase 5 Completion Screen Animations
+  useEffect(() => {
+    if (isCompletionActive) {
+      audioSynthesizer.setAmbientVolume(volume * 0.4);
+
+      gsap.set(compTitleRef.current, { opacity: 0, scale: 0.9, filter: "blur(6px)" });
+      gsap.set(compCardsRef.current?.children || [], { opacity: 0, y: 15, filter: "blur(4px)" });
+      gsap.set(compActionsRef.current, { opacity: 0, y: 10 });
+
+      const tl = gsap.timeline();
+      tl.to(compTitleRef.current, {
+        opacity: 1,
+        scale: 1,
+        filter: "blur(0px)",
+        duration: 0.8,
+        ease: "back.out(1.1)",
+      })
+      .to(compCardsRef.current?.children || [], {
+        opacity: 1,
+        y: 0,
+        filter: "blur(0px)",
+        duration: 0.4,
+        stagger: 0.12,
+        ease: "power2.out",
+      }, "-=0.2")
+      .to(compActionsRef.current, {
+        opacity: 1,
+        y: 0,
+        duration: 0.5,
+        ease: "power2.out",
+      }, "-=0.1");
+    } else {
+      audioSynthesizer.setAmbientVolume(volume);
+    }
+  }, [isCompletionActive, volume]);
+
   // Keyboard Shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -804,7 +1000,7 @@ export default function FocusTimer() {
         return;
       }
 
-      if (isFullFocusActive && isIntroCompleted) {
+      if (isFullFocusActive && isIntroCompleted && !isCompletionActive) {
         if (code === "Space") {
           e.preventDefault();
           toggleTimer();
@@ -842,11 +1038,12 @@ export default function FocusTimer() {
     toggleTimer,
     isMuted,
     toggleMute,
+    isCompletionActive,
   ]);
 
   // Auto-hiding Controls (4-Second mouse inactivity)
   useEffect(() => {
-    if (!isFullFocusActive || !isIntroCompleted) return;
+    if (!isFullFocusActive || !isIntroCompleted || isCompletionActive) return;
 
     const handleMouseMove = () => {
       setShowControls(true);
@@ -869,7 +1066,7 @@ export default function FocusTimer() {
         clearTimeout(mouseTimerRef.current);
       }
     };
-  }, [isFullFocusActive, isIntroCompleted]);
+  }, [isFullFocusActive, isIntroCompleted, isCompletionActive]);
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -897,6 +1094,47 @@ export default function FocusTimer() {
   const formatSoundName = (sound: string | null) => {
     if (!sound) return "None";
     return sound.charAt(0).toUpperCase() + sound.slice(1);
+  };
+
+  // Phase 5 Action Button Handlers
+  const handleStartNextSession = () => {
+    setIsCompletionActive(false);
+    setMode("focus");
+    const nextDur = 25 * 60;
+    setSessionDuration(nextDur);
+    setTimeLeft(nextDur);
+    setMission("");
+    setIsLocked(false);
+    setDistractions(0);
+    setPauseCount(0);
+    sessionStartRef.current = null;
+  };
+
+  const handleTakeBreak = () => {
+    setIsCompletionActive(false);
+    setMode("break");
+    const nextDur = 5 * 60;
+    setSessionDuration(nextDur);
+    setTimeLeft(nextDur);
+    setIsLocked(false);
+    setDistractions(0);
+    setPauseCount(0);
+    sessionStartRef.current = null;
+
+    setTimeout(() => {
+      setIsRunning(true);
+    }, 100);
+  };
+
+  const handleReturnToDashboard = () => {
+    setIsCompletionActive(false);
+    exitFullFocus();
+  };
+
+  const handleRetrySave = () => {
+    if (sessionSummary) {
+      autoSaveSession(sessionSummary);
+    }
   };
 
   return (
@@ -1413,6 +1651,198 @@ export default function FocusTimer() {
             <h2 className="font-orbitron uppercase text-lg sm:text-xl font-bold tracking-[0.2em] text-white/60">
               Returning to Dashboard...
             </h2>
+          </div>
+        </div>
+      )}
+
+      {/* 4. PHASE 5 COMPLETION OVERLAY VIEW */}
+      {isCompletionActive && (
+        <div
+          ref={compOverlayRef}
+          className="fixed inset-0 w-screen h-screen bg-black z-[90] flex flex-col items-center justify-center select-none overflow-y-auto p-8 font-inter"
+        >
+          {/* Subtle slow breathing background gradient */}
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(15,15,15,0.85)_0%,#000000_100%)] pointer-events-none" />
+
+          {/* Vignette Overlay */}
+          <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_55%,rgba(0,0,0,0.95)_100%)] pointer-events-none" />
+
+          {/* Main content container */}
+          <div className="w-full max-w-2xl flex flex-col items-center z-20 gap-8 mt-auto mb-auto">
+            {/* Title Header */}
+            <div ref={compTitleRef} className="text-center flex flex-col items-center gap-2">
+              <span className="font-orbitron uppercase text-[11px] tracking-[0.4em] text-white/30 block animate-pulse">
+                Operation Successful
+              </span>
+              <h1 className="font-orbitron uppercase text-3xl sm:text-4xl font-extrabold tracking-[0.2em] text-white text-glow">
+                MISSION COMPLETE
+              </h1>
+              <div className="w-24 h-[1px] bg-white/20 mt-3" />
+            </div>
+
+            {/* Session Summary & Analytics Grid */}
+            <div ref={compCardsRef} className="w-full grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Mission Card */}
+              <div className="bg-white/[0.02] border border-white/5 p-5 rounded-lg flex flex-col justify-between">
+                <div>
+                  <span className="font-orbitron uppercase text-[9px] tracking-wider text-white/40 block mb-1">Mission</span>
+                  <h3 className="font-orbitron uppercase text-base sm:text-lg font-bold text-white tracking-wide">
+                    {sessionSummary?.mission}
+                  </h3>
+                </div>
+                <div className="mt-4 pt-4 border-t border-white/5 flex justify-between items-center text-xs">
+                  <span className="font-mono text-white/40 uppercase text-[9px] tracking-wider">Device Type</span>
+                  <span className="font-mono text-white/70">Desktop</span>
+                </div>
+              </div>
+
+              {/* Focus Score Card (Highlighted) */}
+              <div className="bg-white/[0.03] border border-white/10 p-5 rounded-lg flex flex-col justify-between relative overflow-hidden group shadow-[0_0_15px_rgba(255,255,255,0.02)]">
+                <div className="absolute top-0 right-0 w-32 h-32 bg-white/[0.01] rounded-full blur-xl pointer-events-none" />
+                <div>
+                  <span className="font-orbitron uppercase text-[9px] tracking-wider text-white/40 block mb-1">Focus Score</span>
+                  <div className="flex items-baseline gap-1 mt-1">
+                    <span className="font-mono text-4xl font-bold text-white text-glow">
+                      {sessionSummary?.focusScore}
+                    </span>
+                    <span className="font-mono text-xs text-white/30">/ 100</span>
+                  </div>
+                </div>
+                <div className="mt-4 pt-4 border-t border-white/5 flex justify-between items-center text-xs">
+                  <span className="font-mono text-white/40 uppercase text-[9px] tracking-wider">Focus Quality</span>
+                  <span
+                    className={`font-mono font-bold uppercase text-[10px] ${
+                      (sessionSummary?.focusScore || 0) >= 90
+                        ? "text-green-400"
+                        : (sessionSummary?.focusScore || 0) >= 70
+                        ? "text-yellow-400"
+                        : "text-red-400"
+                    }`}
+                  >
+                    {(sessionSummary?.focusScore || 0) >= 90
+                      ? "Excellent"
+                      : (sessionSummary?.focusScore || 0) >= 70
+                      ? "Good"
+                      : "Needs Work"}
+                  </span>
+                </div>
+              </div>
+
+              {/* Stats Grid Card */}
+              <div className="bg-white/[0.02] border border-white/5 p-5 rounded-lg md:col-span-2 flex flex-col gap-3">
+                <span className="font-orbitron uppercase text-[9px] tracking-wider text-white/40 block mb-1">Session Analytics</span>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-center">
+                  <div className="flex flex-col p-3 bg-white/[0.01] border border-white/[0.02] rounded">
+                    <span className="font-mono text-white/30 uppercase text-[8px] tracking-wider mb-1">Focus Time</span>
+                    <span className="font-mono text-sm text-white font-bold">25 min</span>
+                  </div>
+
+                  <div className="flex flex-col p-3 bg-white/[0.01] border border-white/[0.02] rounded">
+                    <span className="font-mono text-white/30 uppercase text-[8px] tracking-wider mb-1">Streak</span>
+                    <span className="font-mono text-sm text-white font-bold">{streak} Sessions</span>
+                  </div>
+
+                  <div className="flex flex-col p-3 bg-white/[0.01] border border-white/[0.02] rounded">
+                    <span className="font-mono text-white/30 uppercase text-[8px] tracking-wider mb-1">Pauses</span>
+                    <span className="font-mono text-sm text-white font-bold">{sessionSummary?.pauseCount}</span>
+                  </div>
+
+                  <div className="flex flex-col p-3 bg-white/[0.01] border border-white/[0.02] rounded">
+                    <span className="font-mono text-white/30 uppercase text-[8px] tracking-wider mb-1">Distractions</span>
+                    <span className="font-mono text-sm text-white font-bold">{sessionSummary?.distractionCount}</span>
+                  </div>
+                </div>
+
+                <div className="flex justify-between items-center text-xs mt-2 pt-2 border-t border-white/5">
+                  <span className="font-mono text-white/40 uppercase text-[9px] tracking-wider">Today&apos;s Focus Total</span>
+                  <span className="font-mono text-white font-bold">{formatTodayFocus(todayFocusMinutes)}</span>
+                </div>
+              </div>
+
+              {/* Achievements Unlocked Card */}
+              {earnedAchievements.length > 0 && (
+                <div className="bg-white/[0.02] border border-white/5 p-5 rounded-lg md:col-span-2 flex flex-col gap-3">
+                  <span className="font-orbitron uppercase text-[9px] tracking-wider text-white/40 block mb-1">Achievements Unlocked</span>
+                  <div className="flex flex-wrap gap-3 mt-1">
+                    {earnedAchievements.map((ach) => (
+                      <div
+                        key={ach.id}
+                        className="bg-white/[0.03] border border-white/10 px-3 py-2 rounded flex items-center gap-2 hover:bg-white/[0.06] transition-all duration-300 shadow-[0_0_10px_rgba(255,255,255,0.01)]"
+                        title={ach.description}
+                      >
+                        <span className="text-base shrink-0">{ach.icon}</span>
+                        <div className="flex flex-col">
+                          <span className="font-orbitron text-[9px] tracking-wider text-white font-bold uppercase">
+                            {ach.title}
+                          </span>
+                          <span className="font-inter text-[8px] text-white/40 leading-none">{ach.description}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Asynchronous Autocomplete Save Status Banner */}
+            <div className="w-full flex items-center justify-center gap-3 py-3 px-4 bg-white/[0.01] border border-white/5 rounded-lg">
+              {saveStatus === "saving" && (
+                <>
+                  <div className="w-3.5 h-3.5 border border-white/20 border-t-white rounded-full animate-spin shrink-0" />
+                  <span className="font-mono text-[10px] tracking-wider text-white/40 uppercase">
+                    Saving Session Data to MongoDB...
+                  </span>
+                </>
+              )}
+              {saveStatus === "success" && (
+                <>
+                  <div className="w-4 h-4 bg-white text-black flex items-center justify-center rounded-full text-[9px] font-bold shrink-0 shadow-[0_0_8px_rgba(255,255,255,0.5)]">
+                    ✓
+                  </div>
+                  <span className="font-mono text-[10px] tracking-wider text-white/70 uppercase font-bold">
+                    Session Saved Successfully
+                  </span>
+                </>
+              )}
+              {saveStatus === "error" && (
+                <>
+                  <span className="font-mono text-[10px] tracking-wider text-red-400 uppercase shrink-0">
+                    Failed to Sync Session Stats
+                  </span>
+                  <button
+                    onClick={handleRetrySave}
+                    className="px-2.5 py-1 border border-red-500/20 hover:border-red-500 hover:bg-red-500/10 text-red-400 font-orbitron text-[9px] tracking-widest uppercase transition-all rounded cursor-pointer"
+                  >
+                    Retry Saving
+                  </button>
+                </>
+              )}
+            </div>
+
+            {/* Next Actions (Bottom Buttons) */}
+            <div ref={compActionsRef} className="flex flex-wrap gap-4 w-full justify-center">
+              <button
+                onClick={handleStartNextSession}
+                className="px-6 py-2.5 bg-white text-black font-orbitron uppercase text-[10px] tracking-widest hover:bg-neutral-200 transition-all font-extrabold shadow-[0_0_15px_rgba(255,255,255,0.15)] cursor-pointer"
+              >
+                Start Next Focus Session
+              </button>
+
+              <button
+                onClick={handleTakeBreak}
+                className="px-6 py-2.5 border border-white/15 text-white font-orbitron uppercase text-[10px] tracking-widest hover:bg-white hover:text-black hover:border-white transition-all cursor-pointer"
+              >
+                Take a Break
+              </button>
+
+              <button
+                onClick={handleReturnToDashboard}
+                className="px-6 py-2.5 border border-white/5 hover:border-white/20 text-white/40 hover:text-white transition-all rounded cursor-pointer font-mono text-[10px]"
+              >
+                Return to Dashboard
+              </button>
+            </div>
           </div>
         </div>
       )}

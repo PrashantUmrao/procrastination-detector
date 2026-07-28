@@ -8,7 +8,14 @@ export interface IFocusSession extends Document {
   startedAt: Date;
   endedAt: Date;
   completed: boolean;
-  distractions: number; // count of pauses
+  distractions: number; // count of distractions (pauses + incomplete sessions)
+  focusScore?: number;
+  pauseCount?: number;
+  distractionCount?: number;
+  achievementIds?: string[];
+  environment?: string;
+  volume?: number;
+  deviceType?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -23,6 +30,13 @@ const FocusSessionSchema = new Schema<IFocusSession>(
     endedAt: { type: Date, required: true },
     completed: { type: Boolean, required: true },
     distractions: { type: Number, default: 0 },
+    focusScore: { type: Number, default: 0 },
+    pauseCount: { type: Number, default: 0 },
+    distractionCount: { type: Number, default: 0 },
+    achievementIds: { type: [String], default: [] },
+    environment: { type: String, default: "None" },
+    volume: { type: Number, default: 0.5 },
+    deviceType: { type: String, default: "Desktop" },
   },
   {
     timestamps: true,

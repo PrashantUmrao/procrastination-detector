@@ -11,7 +11,22 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json();
-    const { mission, type, duration, startedAt, endedAt, completed, distractions } = body;
+    const {
+      mission,
+      type,
+      duration,
+      startedAt,
+      endedAt,
+      completed,
+      distractions,
+      focusScore,
+      pauseCount,
+      distractionCount,
+      achievementIds,
+      environment,
+      volume,
+      deviceType
+    } = body;
 
     // Validate fields
     if (!mission || !type || typeof duration !== "number" || !startedAt || !endedAt || typeof completed !== "boolean") {
@@ -29,6 +44,13 @@ export async function POST(req: Request) {
       endedAt: new Date(endedAt),
       completed,
       distractions: distractions || 0,
+      focusScore: focusScore || 0,
+      pauseCount: pauseCount || 0,
+      distractionCount: distractionCount || 0,
+      achievementIds: achievementIds || [],
+      environment: environment || "None",
+      volume: typeof volume === "number" ? volume : 0.5,
+      deviceType: deviceType || "Desktop",
     });
 
     return NextResponse.json({ success: true, session });
