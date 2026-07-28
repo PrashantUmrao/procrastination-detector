@@ -268,6 +268,33 @@ class AudioSynthesizer {
     }
   }
 
+  fadeAmbientIn(sound: string, targetVolume: number, duration = 1.5) {
+    this.init();
+    if (!this.ctx) return;
+
+    if (this.ctx.state === "suspended") {
+      this.ctx.resume();
+    }
+
+    this.startAmbient(sound, 0.001);
+    if (this.ambientGain) {
+      this.ambientGain.gain.setValueAtTime(0.001, this.ctx.currentTime);
+      this.ambientGain.gain.linearRampToValueAtTime(targetVolume, this.ctx.currentTime + duration);
+    }
+  }
+
+  fadeAmbientOut(duration = 1.5) {
+    if (this.ambientGain && this.ctx) {
+      this.ambientGain.gain.setValueAtTime(this.ambientGain.gain.value, this.ctx.currentTime);
+      this.ambientGain.gain.linearRampToValueAtTime(0.001, this.ctx.currentTime + duration);
+      setTimeout(() => {
+        this.stopAmbient();
+      }, duration * 1000);
+    } else {
+      this.stopAmbient();
+    }
+  }
+
   startWind() {
     this.init();
     if (!this.ctx) return;
