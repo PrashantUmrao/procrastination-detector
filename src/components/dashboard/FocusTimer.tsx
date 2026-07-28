@@ -34,6 +34,13 @@ export default function FocusTimer() {
   const [showControls, setShowControls] = useState(true);
   const [streak, setStreak] = useState(0);
 
+  // Phase 3 Overlay States
+  const [isEntering, setIsEntering] = useState(false);
+  const [ritualText, setRitualText] = useState("");
+  const [isMissionRevealed, setIsMissionRevealed] = useState(false);
+  const [isTimerRevealed, setIsTimerRevealed] = useState(false);
+  const [isExitTransitionActive, setIsExitTransitionActive] = useState(false);
+
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const sessionStartRef = useRef<Date | null>(null);
   const fullscreenContainerRef = useRef<HTMLDivElement | null>(null);
@@ -43,9 +50,10 @@ export default function FocusTimer() {
   // Sword and text animation refs
   const swordImgRef = useRef<HTMLDivElement | null>(null);
   const swordLightRef = useRef<HTMLDivElement | null>(null);
-  const swordShimmerRef = useRef<HTMLDivElement | null>(null);
-  const overlayRef = useRef<HTMLDivElement | null>(null);
-  const introTextRef = useRef<HTMLDivElement | null>(null);
+  const textRef = useRef<HTMLSpanElement | null>(null);
+  const missionRef = useRef<HTMLDivElement | null>(null);
+  const timerRevealRef = useRef<HTMLDivElement | null>(null);
+  const exitOverlayRef = useRef<HTMLDivElement | null>(null);
 
   const progress = (timeLeft / sessionDuration) * 100;
 
@@ -397,9 +405,27 @@ export default function FocusTimer() {
     localStorage.setItem("pd_ambient_volume", newVol.toString());
   };
 
+  // Skip Transition Interruption Logic
+  const skipIntro = () => {
+    if (isIntroCompleted) return;
+
+    gsap.killTweensOf([swordImgRef.current, swordLightRef.current, textRef.current, missionRef.current, timerRevealRef.current]);
+
+    setIsIntroCompleted(true);
+    setIsEntering(false);
+    setIsMissionRevealed(true);
+    setIsTimerRevealed(true);
+
+    if (selectedSound) {
+      audioSynthesizer.fadeAmbientIn(selectedSound, volumeRef.current, 1.0);
+    }
+  };
+
   // Full Focus Entry / Exit Triggers
   const enterFullFocus = async () => {
-    if (!mission.trim()) return;
+    if (!mission.trim() || isEntering) return;
+
+    setIsEntering(true);
 
     try {
       const container = fullscreenContainerRef.current as FullscreenElement;
@@ -416,31 +442,181 @@ export default function FocusTimer() {
 
         setIsFullFocusActive(true);
         setIsIntroCompleted(false);
+        setIsMissionRevealed(false);
+        setIsTimerRevealed(false);
+
+        // Start timer in the background immediately!
+        setIsRunning(true);
+
+        // Fade in background sound immediately
+        if (selectedSound) {
+          audioSynthesizer.fadeAmbientIn(selectedSound, volumeRef.current, 4.0);
+        }
+
+        // Check skip logic (10-minute check)
+        const lastExitTime = localStorage.getItem("pd_last_focus_exit_time");
+        const exitDiff = lastExitTime ? Date.now() - parseInt(lastExitTime, 10) : Infinity;
+        const useShortIntro = exitDiff < 10 * 60 * 1000;
+
+        // Check prefers-reduced-motion
+        const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+        if (prefersReducedMotion) {
+          // Skip all transitions
+          setIsIntroCompleted(true);
+          setIsMissionRevealed(true);
+          setIsTimerRevealed(true);
+          setIsEntering(false);
+        } else if (useShortIntro) {
+          // Shortened sequence (< 1s)
+          setRitualText("Entering Deep Focus...");
+          
+          const shortTl = gsap.timeline({
+            onComplete: () => {
+              setIsIntroCompleted(true);
+              setIsEntering(false);
+            }
+          });
+
+          shortTl.fromTo(textRef.current,
+            { opacity: 0, y: 5 },
+            { opacity: 1, y: 0, duration: 0.2, ease: "power2.out" }
+          )
+          .to(textRef.current,
+            { opacity: 0, y: -5, duration: 0.15, ease: "power2.in", delay: 0.25 }
+          )
+          .call(() => {
+            setIsMissionRevealed(true);
+          })
+          .fromTo(missionRef.current,
+            { opacity: 0 },
+            { opacity: 1, duration: 0.15 }
+          )
+          .delay(0.05)
+          .call(() => {
+            setIsTimerRevealed(true);
+          })
+          .fromTo(timerRevealRef.current,
+            { opacity: 0 },
+            { opacity: 1, duration: 0.15 }
+          );
+
+        } else {
+          // Play full 4.5s ritual sequence
+          setRitualText("Loading Focus Environment...");
+          
+          // Animate sword light pulse loop
+          gsap.killTweensOf(swordLightRef.current);
+          gsap.fromTo(swordLightRef.current,
+            { left: "0%", opacity: 0 },
+            { left: "100%", opacity: 1, duration: 2.2, repeat: -1, ease: "power1.inOut" }
+          );
+
+          const messages = [
+            "Loading Focus Environment...",
+            "Closing Outside World...",
+            "Silencing Distractions...",
+            "Clearing Mental Noise...",
+            "Preparing Deep Work...",
+            "Locking Current Mission...",
+            "Entering Flow State...",
+            "Deep Focus Activated"
+          ];
+
+          const fullTl = gsap.timeline({
+            onComplete: () => {
+              gsap.timeline({
+                onComplete: () => {
+                  const revealTl = gsap.timeline({
+                    onComplete: () => {
+                      setIsIntroCompleted(true);
+                      setIsEntering(false);
+                    }
+                  });
+
+                  setIsMissionRevealed(true);
+                  revealTl.fromTo(missionRef.current,
+                    { opacity: 0, y: 10 },
+                    { opacity: 1, y: 0, duration: 0.5, ease: "power2.out" }
+                  )
+                  .delay(0.7)
+                  .call(() => {
+                    setIsTimerRevealed(true);
+                  })
+                  .fromTo(timerRevealRef.current,
+                    { opacity: 0, scale: 0.97 },
+                    { opacity: 1, scale: 1, duration: 0.5, ease: "back.out(1.1)" }
+                  );
+                }
+              })
+              .to([swordImgRef.current, swordLightRef.current, textRef.current], {
+                opacity: 0,
+                duration: 0.5,
+                ease: "power2.inOut"
+              });
+            }
+          });
+
+          // Message cycles
+          messages.forEach((msg, idx) => {
+            fullTl.call(() => setRitualText(msg))
+              .fromTo(textRef.current,
+                { opacity: 0, filter: "blur(6px)", y: 8 },
+                { opacity: 1, filter: "blur(0px)", y: 0, duration: 0.22, ease: "power2.out" }
+              )
+              .to(textRef.current,
+                { opacity: 0, filter: "blur(6px)", y: -8, duration: 0.2, ease: "power2.in", delay: 0.16 }
+              );
+
+            if (idx === 7) {
+              fullTl.call(() => audioSynthesizer.playRitualChime(), undefined, "-=0.2")
+                .to(textRef.current, { delay: 0.7 });
+            }
+          });
+        }
       }
     } catch (err) {
       console.error("Failed to enter fullscreen:", err);
+      setIsEntering(false);
     }
   };
 
   const exitFullFocus = async () => {
-    try {
-      const doc = document as FullscreenDocument;
-      if (doc.fullscreenElement) {
-        if (doc.exitFullscreen) {
-          await doc.exitFullscreen();
-        } else if (doc.webkitExitFullscreen) {
-          await doc.webkitExitFullscreen();
-        } else if (doc.mozCancelFullScreen) {
-          await doc.mozCancelFullScreen();
-        } else if (doc.msExitFullscreen) {
-          await doc.msExitFullscreen();
+    if (isExitTransitionActive) return;
+
+    setIsExitTransitionActive(true);
+    
+    // Animate exit overlay
+    const exitTl = gsap.timeline({
+      onComplete: async () => {
+        try {
+          const doc = document as FullscreenDocument;
+          if (doc.fullscreenElement) {
+            if (doc.exitFullscreen) {
+              await doc.exitFullscreen();
+            } else if (doc.webkitExitFullscreen) {
+              await doc.webkitExitFullscreen();
+            } else if (doc.mozCancelFullScreen) {
+              await doc.mozCancelFullScreen();
+            } else if (doc.msExitFullscreen) {
+              await doc.msExitFullscreen();
+            }
+          }
+        } catch (err) {
+          console.error("Failed to exit fullscreen:", err);
+        } finally {
+          setIsFullFocusActive(false);
+          setIsExitTransitionActive(false);
+          localStorage.setItem("pd_last_focus_exit_time", Date.now().toString());
         }
       }
-      setIsFullFocusActive(false);
-    } catch (err) {
-      console.error("Failed to exit fullscreen:", err);
-      setIsFullFocusActive(false);
-    }
+    });
+
+    exitTl.fromTo(exitOverlayRef.current,
+      { opacity: 0 },
+      { opacity: 1, duration: 0.5, ease: "power2.inOut" }
+    )
+    .delay(1.0);
   };
 
   // Sync Fullscreen browser changes (e.g. Esc key pressed)
@@ -449,6 +625,7 @@ export default function FocusTimer() {
       const isCurrentlyFullscreen = document.fullscreenElement === fullscreenContainerRef.current;
       if (!isCurrentlyFullscreen && isFullFocusActive) {
         setIsFullFocusActive(false);
+        localStorage.setItem("pd_last_focus_exit_time", Date.now().toString());
       }
     };
 
@@ -476,94 +653,6 @@ export default function FocusTimer() {
       document.body.style.overflow = "";
     };
   }, [isFullFocusActive]);
-
-  // Cinematic 3-Second Entry Sequence GSAP Timeline
-  useEffect(() => {
-    if (isFullFocusActive && !isIntroCompleted) {
-      audioSynthesizer.playImpact();
-
-      // Ensure layout elements are clean
-      gsap.set(swordImgRef.current, { opacity: 0 });
-      gsap.set(swordLightRef.current, { opacity: 0, left: "0%" });
-      gsap.set(swordShimmerRef.current, { left: "-30%" });
-      gsap.set(introTextRef.current, { opacity: 0, scale: 0.95 });
-
-      const tl = gsap.timeline({
-        onComplete: () => {
-          setIsIntroCompleted(true);
-          setIsRunning(true);
-          if (selectedSound) {
-            audioSynthesizer.fadeAmbientIn(selectedSound, volumeRef.current, 1.5);
-          }
-        },
-      });
-
-      const animationState = { swordReveal: 0 };
-
-      tl.to(swordImgRef.current, {
-        opacity: 0.9,
-        duration: 0.6,
-        ease: "power2.out",
-      })
-        .to(
-          swordLightRef.current,
-          {
-            opacity: 1,
-            duration: 0.2,
-          },
-          "-=0.2"
-        )
-        .to(
-          animationState,
-          {
-            swordReveal: 1,
-            duration: 1.0,
-            ease: "power1.inOut",
-            onUpdate: () => {
-              const val = animationState.swordReveal;
-              if (swordImgRef.current) {
-                const maskPosX = `${(1 - val) * 100}%`;
-                swordImgRef.current.style.maskPosition = `${maskPosX} 0%`;
-                swordImgRef.current.style.webkitMaskPosition = `${maskPosX} 0%`;
-              }
-              if (swordLightRef.current) {
-                swordLightRef.current.style.left = `${val * 100}%`;
-              }
-            },
-          },
-          "-=0.2"
-        )
-        .to(swordLightRef.current, {
-          opacity: 0,
-          duration: 0.3,
-        })
-        .to(
-          swordShimmerRef.current,
-          {
-            left: "100%",
-            duration: 0.8,
-            ease: "power2.out",
-          },
-          "-=0.6"
-        )
-        .to(
-          introTextRef.current,
-          {
-            opacity: 1,
-            scale: 1,
-            duration: 0.6,
-            ease: "back.out(1.2)",
-          },
-          "-=0.4"
-        )
-        .to([swordImgRef.current, introTextRef.current], {
-          opacity: 0,
-          duration: 0.5,
-          ease: "power2.inOut",
-          delay: 0.4,
-        });
-    }
-  }, [isFullFocusActive, isIntroCompleted, selectedSound]);
 
   // Floating Particles Canvas Loop
   useEffect(() => {
@@ -907,10 +996,10 @@ export default function FocusTimer() {
           )}
         </div>
 
-        {/* Enter Full Focus Trigger Button */}
+        {/* Enter Focus Mode Trigger Button */}
         <button
           onClick={enterFullFocus}
-          disabled={!mission.trim()}
+          disabled={!mission.trim() || isEntering}
           className="w-full mt-4 py-2.5 border border-white/10 hover:border-white/30 text-white font-orbitron text-[9px] tracking-[0.2em] uppercase hover:bg-white hover:text-black transition-all duration-300 rounded flex items-center justify-center gap-2 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
         >
           <Maximize2 className="w-3 h-3" /> Enter Focus Mode
@@ -933,10 +1022,20 @@ export default function FocusTimer() {
           <canvas ref={canvasRef} className="absolute inset-0 w-full h-full pointer-events-none z-10" />
 
           {!isIntroCompleted ? (
-            // 3-Second Cinematic Entry Sequence View
-            <div ref={overlayRef} className="flex flex-col items-center justify-center z-20">
-              {/* Glowing vector sword from CinematicIntro */}
-              <div className="relative w-full max-w-[340px] md:max-w-[440px] h-[24px] overflow-hidden flex items-center justify-center mb-6">
+            // Cinematic Entry Sequence View
+            <div
+              onClick={skipIntro}
+              className="flex flex-col items-center justify-center z-20 w-full h-full cursor-pointer relative"
+              title="Click anywhere to skip transition"
+            >
+              {/* Vignette Overlay */}
+              <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_55%,rgba(0,0,0,0.92)_100%)] pointer-events-none" />
+
+              {/* Glowing vector sword centerpiece */}
+              <div
+                ref={swordImgRef}
+                className="relative w-full max-w-[340px] md:max-w-[440px] h-[24px] overflow-hidden flex items-center justify-center mb-10 transition-opacity duration-500"
+              >
                 <div
                   ref={swordLightRef}
                   className="absolute top-0 bottom-0 w-[4px] -translate-x-1/2 z-20 pointer-events-none"
@@ -946,7 +1045,6 @@ export default function FocusTimer() {
                   }}
                 />
                 <div
-                  ref={swordImgRef}
                   className="w-full h-full flex items-center justify-center"
                   style={{
                     maskImage: "linear-gradient(to right, #000 0%, #000 33%, transparent 66%, transparent 100%)",
@@ -969,27 +1067,27 @@ export default function FocusTimer() {
                     className="w-full h-auto opacity-95"
                   >
                     <defs>
-                      <linearGradient id="ff-blade-top" x1="0" y1="0" x2="0" y2="1">
+                      <linearGradient id="ff-blade-top-p3" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="0%" stopColor="#ffffff" />
                         <stop offset="100%" stopColor="#b5b5b5" />
                       </linearGradient>
-                      <linearGradient id="ff-blade-bottom" x1="0" y1="0" x2="0" y2="1">
+                      <linearGradient id="ff-blade-bottom-p3" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="0%" stopColor="#8c8c8c" />
                         <stop offset="100%" stopColor="#555555" />
                       </linearGradient>
-                      <linearGradient id="ff-metal-bright" x1="0" y1="0" x2="1" y2="0">
+                      <linearGradient id="ff-metal-bright-p3" x1="0" y1="0" x2="1" y2="0">
                         <stop offset="0%" stopColor="#7a7a7a" />
                         <stop offset="50%" stopColor="#ffffff" />
                         <stop offset="100%" stopColor="#7a7a7a" />
                       </linearGradient>
-                      <linearGradient id="ff-hilt-grad" x1="0" y1="0" x2="0" y2="1">
+                      <linearGradient id="ff-hilt-grad-p3" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="0%" stopColor="#dcdcdc" />
                         <stop offset="50%" stopColor="#aaaaaa" />
                         <stop offset="100%" stopColor="#444444" />
                       </linearGradient>
                     </defs>
-                    <circle cx="20" cy="12" r="3.5" fill="url(#ff-metal-bright)" stroke="#3a3a3a" strokeWidth="0.5" />
-                    <rect x="23.5" y="10.5" width="46.5" height="3" rx="1" fill="url(#ff-hilt-grad)" />
+                    <circle cx="20" cy="12" r="3.5" fill="url(#ff-metal-bright-p3)" stroke="#3a3a3a" strokeWidth="0.5" />
+                    <rect x="23.5" y="10.5" width="46.5" height="3" rx="1" fill="url(#ff-hilt-grad-p3)" />
                     <line x1="33" y1="10.5" x2="33" y2="13.5" stroke="#3a3a3a" strokeWidth="0.5" />
                     <line x1="43" y1="10.5" x2="43" y2="13.5" stroke="#3a3a3a" strokeWidth="0.5" />
                     <line x1="53" y1="10.5" x2="53" y2="13.5" stroke="#3a3a3a" strokeWidth="0.5" />
@@ -1000,35 +1098,46 @@ export default function FocusTimer() {
                       width="5"
                       height="16"
                       rx="1"
-                      fill="url(#ff-metal-bright)"
+                      fill="url(#ff-metal-bright-p3)"
                       stroke="#3a3a3a"
                       strokeWidth="0.5"
                     />
                     <rect x="71.5" y="10.5" width="2" height="3" fill="#ffffff" />
-                    <rect x="75" y="9.5" width="8" height="5" fill="url(#ff-hilt-grad)" />
-                    <path d="M83 9.5 L460 9.5 L480 12 L83 12 Z" fill="url(#ff-blade-top)" />
-                    <path d="M83 12 L480 12 L460 14.5 L83 14.5 Z" fill="url(#ff-blade-bottom)" />
+                    <rect x="75" y="9.5" width="8" height="5" fill="url(#ff-hilt-grad-p3)" />
+                    <path d="M83 9.5 L460 9.5 L480 12 L83 12 Z" fill="url(#ff-blade-top-p3)" />
+                    <path d="M83 12 L480 12 L460 14.5 L83 14.5 Z" fill="url(#ff-blade-bottom-p3)" />
                   </svg>
                 </div>
-                <div
-                  ref={swordShimmerRef}
-                  className="absolute top-0 bottom-0 w-[30%] -skew-x-[25deg] z-10 pointer-events-none mix-blend-overlay"
-                  style={{
-                    background: "linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.45) 50%, transparent)",
-                    left: "-30%",
-                  }}
-                />
               </div>
 
-              {/* Glowing Texts */}
-              <div ref={introTextRef} className="flex flex-col items-center gap-1.5">
-                <span className="font-orbitron uppercase text-[9px] tracking-[0.4em] text-red-500 font-extrabold text-glow animate-pulse">
-                  MISSION LOCKED
-                </span>
-                <span className="font-orbitron uppercase text-[11px] tracking-[0.2em] text-white/50">
-                  Deep Focus Initiated
+              {/* Protocol Messages */}
+              <div className="h-12 flex items-center justify-center mb-6">
+                <span
+                  ref={textRef}
+                  className="font-orbitron uppercase text-[10px] md:text-xs tracking-[0.25em] text-white/70 font-semibold"
+                >
+                  {ritualText}
                 </span>
               </div>
+
+              {/* Mission reveal during animation */}
+              {isMissionRevealed && (
+                <div ref={missionRef} className="flex flex-col items-center gap-2 mb-4">
+                  <span className="font-orbitron uppercase text-[9px] tracking-[0.3em] text-white/30">MISSION</span>
+                  <h2 className="font-orbitron uppercase text-xl md:text-2xl tracking-[0.1em] font-extrabold text-white text-glow">
+                    {mission}
+                  </h2>
+                </div>
+              )}
+
+              {/* Timer reveal during animation */}
+              {isTimerRevealed && (
+                <div ref={timerRevealRef} className="flex flex-col items-center">
+                  <h1 className="font-mono text-7xl md:text-8xl tracking-widest text-glow text-white">
+                    {formatTime(timeLeft)}
+                  </h1>
+                </div>
+              )}
             </div>
           ) : (
             // Full Focus Mode Main Layout
@@ -1182,6 +1291,24 @@ export default function FocusTimer() {
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* 3. EXIT SEQUENCE OVERLAY VIEW */}
+      {isExitTransitionActive && (
+        <div
+          ref={exitOverlayRef}
+          className="fixed inset-0 w-screen h-screen bg-black z-[100] flex flex-col items-center justify-center select-none overflow-hidden"
+          style={{ opacity: 0 }}
+        >
+          <div className="flex flex-col items-center gap-2">
+            <span className="font-orbitron uppercase text-[9px] tracking-[0.4em] text-white/30 block animate-pulse">
+              SESSION PRESERVED
+            </span>
+            <h2 className="font-orbitron uppercase text-lg sm:text-xl font-bold tracking-[0.2em] text-white/60">
+              Returning to Dashboard...
+            </h2>
+          </div>
         </div>
       )}
     </div>

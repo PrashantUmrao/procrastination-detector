@@ -295,6 +295,37 @@ class AudioSynthesizer {
     }
   }
 
+  playRitualChime() {
+    this.init();
+    if (!this.ctx) return;
+    const ctx = this.ctx;
+    const now = ctx.currentTime;
+
+    const ringGain = ctx.createGain();
+    ringGain.gain.setValueAtTime(0.08, now);
+    ringGain.gain.exponentialRampToValueAtTime(0.001, now + 3.0);
+    ringGain.connect(ctx.destination);
+
+    // Sparkling C major harmonic chords
+    [523.25, 659.25, 783.99, 1046.5].forEach((freq, index) => {
+      const osc = ctx.createOscillator();
+      const individualGain = ctx.createGain();
+      
+      osc.type = "sine";
+      osc.frequency.value = freq;
+
+      const decay = 3.0 / (index * 0.4 + 1);
+      individualGain.gain.setValueAtTime(0.04, now);
+      individualGain.gain.exponentialRampToValueAtTime(0.001, now + decay);
+
+      osc.connect(individualGain);
+      individualGain.connect(ringGain);
+      
+      osc.start(now);
+      osc.stop(now + decay + 0.1);
+    });
+  }
+
   startWind() {
     this.init();
     if (!this.ctx) return;
