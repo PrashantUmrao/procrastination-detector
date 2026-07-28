@@ -34,7 +34,12 @@ export default function FocusTimer() {
   const [showControls, setShowControls] = useState(true);
   const [streak, setStreak] = useState(0);
 
-  // Phase 3 Overlay States
+  // Phase 4 Side Panel Stats States
+  const [todayFocusMinutes, setTodayFocusMinutes] = useState(0);
+  const [completedSessions, setCompletedSessions] = useState(0);
+  const [isMuted, setIsMuted] = useState(false);
+
+  // Phase 3 & 4 Overlay States
   const [isEntering, setIsEntering] = useState(false);
   const [ritualText, setRitualText] = useState("");
   const [isMissionRevealed, setIsMissionRevealed] = useState(false);
@@ -63,6 +68,7 @@ export default function FocusTimer() {
   const strokeDashoffset = circumference - (progress / 100) * circumference;
 
   const volumeRef = useRef(volume);
+  const prevVolumeRef = useRef(volume);
 
   useEffect(() => {
     volumeRef.current = volume;
@@ -201,25 +207,27 @@ export default function FocusTimer() {
     audioSynthesizer.setAmbientVolume(volume);
   }, [volume]);
 
-  // Fetch streak for Full Focus View
-  const fetchStreak = async () => {
+  // Fetch streak & focus statistics
+  const fetchStats = async () => {
     try {
       const res = await fetch("/api/focus-sessions/stats");
       if (res.ok) {
         const data = await res.json();
         setStreak(data.focusStreak);
+        setTodayFocusMinutes(data.todayFocusTime);
+        setCompletedSessions(data.completedSessions);
       }
     } catch {}
   };
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      fetchStreak();
+      fetchStats();
     }, 0);
-    window.addEventListener("focusSessionSaved", fetchStreak);
+    window.addEventListener("focusSessionSaved", fetchStats);
     return () => {
       clearTimeout(timer);
-      window.removeEventListener("focusSessionSaved", fetchStreak);
+      window.removeEventListener("focusSessionSaved", fetchStats);
     };
   }, []);
 
@@ -402,7 +410,26 @@ export default function FocusTimer() {
 
   const handleVolumeChange = (newVol: number) => {
     setVolume(newVol);
+    if (newVol > 0 && isMuted) {
+      setIsMuted(false);
+    }
     localStorage.setItem("pd_ambient_volume", newVol.toString());
+  };
+
+  const toggleMute = () => {
+    setIsMuted((prev) => {
+      const nextMuted = !prev;
+      if (nextMuted) {
+        prevVolumeRef.current = volume;
+        setVolume(0);
+        audioSynthesizer.setAmbientVolume(0);
+      } else {
+        const restored = prevVolumeRef.current === 0 ? 0.5 : prevVolumeRef.current;
+        setVolume(restored);
+        audioSynthesizer.setAmbientVolume(restored);
+      }
+      return nextMuted;
+    });
   };
 
   // Skip Transition Interruption Logic
@@ -517,42 +544,63 @@ export default function FocusTimer() {
             "Closing Outside World...",
             "Silencing Distractions...",
             "Clearing Mental Noise...",
-            "Preparing Deep Work...",
             "Locking Current Mission...",
+            "Preparing Deep Work...",
             "Entering Flow State...",
             "Deep Focus Activated"
           ];
 
           const fullTl = gsap.timeline({
             onComplete: () => {
-              gsap.timeline({
+              gsap.to(textRef.current, {
+                opacity: 0,
+                duration: 0.3,
                 onComplete: () => {
-                  const revealTl = gsap.timeline({
+                  setRitualText("MISSION LOCKED");
+                  
+                  const missionLockTl = gsap.timeline({
                     onComplete: () => {
-                      setIsIntroCompleted(true);
-                      setIsEntering(false);
+                      gsap.to(textRef.current, {
+                        opacity: 0,
+                        duration: 0.4,
+                        onComplete: () => {
+                          const revealTl = gsap.timeline({
+                            onComplete: () => {
+                              setIsIntroCompleted(true);
+                              setIsEntering(false);
+                            }
+                          });
+
+                          setIsMissionRevealed(true);
+                          revealTl.fromTo(missionRef.current,
+                            { opacity: 0, y: 12 },
+                            { opacity: 1, y: 0, duration: 0.6, ease: "power2.out" }
+                          )
+                          .delay(1.0)
+                          .to(swordImgRef.current, {
+                            opacity: 0,
+                            duration: 0.7,
+                            ease: "power2.inOut"
+                          })
+                          .call(() => {
+                            setIsTimerRevealed(true);
+                          })
+                          .fromTo(timerRevealRef.current,
+                            { opacity: 0, scale: 0.96 },
+                            { opacity: 1, scale: 1, duration: 0.6, ease: "back.out(1.1)" },
+                            "-=0.3"
+                          );
+                        }
+                      });
                     }
                   });
 
-                  setIsMissionRevealed(true);
-                  revealTl.fromTo(missionRef.current,
-                    { opacity: 0, y: 10 },
-                    { opacity: 1, y: 0, duration: 0.5, ease: "power2.out" }
+                  missionLockTl.fromTo(textRef.current,
+                    { opacity: 0, y: 5 },
+                    { opacity: 1, y: 0, duration: 0.35, ease: "power2.out" }
                   )
-                  .delay(0.7)
-                  .call(() => {
-                    setIsTimerRevealed(true);
-                  })
-                  .fromTo(timerRevealRef.current,
-                    { opacity: 0, scale: 0.97 },
-                    { opacity: 1, scale: 1, duration: 0.5, ease: "back.out(1.1)" }
-                  );
+                  .delay(0.8);
                 }
-              })
-              .to([swordImgRef.current, swordLightRef.current, textRef.current], {
-                opacity: 0,
-                duration: 0.5,
-                ease: "power2.inOut"
               });
             }
           });
@@ -768,6 +816,9 @@ export default function FocusTimer() {
           if (mode === "break") {
             skipBreak();
           }
+        } else if (key === "m") {
+          e.preventDefault();
+          toggleMute();
         }
       }
     };
@@ -789,6 +840,8 @@ export default function FocusTimer() {
     resetTimer,
     skipBreak,
     toggleTimer,
+    isMuted,
+    toggleMute,
   ]);
 
   // Auto-hiding Controls (4-Second mouse inactivity)
@@ -822,6 +875,28 @@ export default function FocusTimer() {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
     return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
+  };
+
+  const formatTodayFocus = (minutes: number) => {
+    let totalMins = minutes;
+    if (isRunning && mode === "focus") {
+      const elapsed = Math.floor((sessionDuration - timeLeft) / 60);
+      totalMins += elapsed;
+    }
+    const hrs = Math.floor(totalMins / 60);
+    const mins = totalMins % 60;
+    return hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`;
+  };
+
+  const formatRemainingFocus = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}m ${secs}s`;
+  };
+
+  const formatSoundName = (sound: string | null) => {
+    if (!sound) return "None";
+    return sound.charAt(0).toUpperCase() + sound.slice(1);
   };
 
   return (
@@ -1067,27 +1142,27 @@ export default function FocusTimer() {
                     className="w-full h-auto opacity-95"
                   >
                     <defs>
-                      <linearGradient id="ff-blade-top-p3" x1="0" y1="0" x2="0" y2="1">
+                      <linearGradient id="ff-blade-top-p4" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="0%" stopColor="#ffffff" />
                         <stop offset="100%" stopColor="#b5b5b5" />
                       </linearGradient>
-                      <linearGradient id="ff-blade-bottom-p3" x1="0" y1="0" x2="0" y2="1">
+                      <linearGradient id="ff-blade-bottom-p4" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="0%" stopColor="#8c8c8c" />
                         <stop offset="100%" stopColor="#555555" />
                       </linearGradient>
-                      <linearGradient id="ff-metal-bright-p3" x1="0" y1="0" x2="1" y2="0">
+                      <linearGradient id="ff-metal-bright-p4" x1="0" y1="0" x2="1" y2="0">
                         <stop offset="0%" stopColor="#7a7a7a" />
                         <stop offset="50%" stopColor="#ffffff" />
                         <stop offset="100%" stopColor="#7a7a7a" />
                       </linearGradient>
-                      <linearGradient id="ff-hilt-grad-p3" x1="0" y1="0" x2="0" y2="1">
+                      <linearGradient id="ff-hilt-grad-p4" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="0%" stopColor="#dcdcdc" />
                         <stop offset="50%" stopColor="#aaaaaa" />
                         <stop offset="100%" stopColor="#444444" />
                       </linearGradient>
                     </defs>
-                    <circle cx="20" cy="12" r="3.5" fill="url(#ff-metal-bright-p3)" stroke="#3a3a3a" strokeWidth="0.5" />
-                    <rect x="23.5" y="10.5" width="46.5" height="3" rx="1" fill="url(#ff-hilt-grad-p3)" />
+                    <circle cx="20" cy="12" r="3.5" fill="url(#ff-metal-bright-p4)" stroke="#3a3a3a" strokeWidth="0.5" />
+                    <rect x="23.5" y="10.5" width="46.5" height="3" rx="1" fill="url(#ff-hilt-grad-p4)" />
                     <line x1="33" y1="10.5" x2="33" y2="13.5" stroke="#3a3a3a" strokeWidth="0.5" />
                     <line x1="43" y1="10.5" x2="43" y2="13.5" stroke="#3a3a3a" strokeWidth="0.5" />
                     <line x1="53" y1="10.5" x2="53" y2="13.5" stroke="#3a3a3a" strokeWidth="0.5" />
@@ -1098,14 +1173,14 @@ export default function FocusTimer() {
                       width="5"
                       height="16"
                       rx="1"
-                      fill="url(#ff-metal-bright-p3)"
+                      fill="url(#ff-metal-bright-p4)"
                       stroke="#3a3a3a"
                       strokeWidth="0.5"
                     />
                     <rect x="71.5" y="10.5" width="2" height="3" fill="#ffffff" />
-                    <rect x="75" y="9.5" width="8" height="5" fill="url(#ff-hilt-grad-p3)" />
-                    <path d="M83 9.5 L460 9.5 L480 12 L83 12 Z" fill="url(#ff-blade-top-p3)" />
-                    <path d="M83 12 L480 12 L460 14.5 L83 14.5 Z" fill="url(#ff-blade-bottom-p3)" />
+                    <rect x="75" y="9.5" width="8" height="5" fill="url(#ff-hilt-grad-p4)" />
+                    <path d="M83 9.5 L460 9.5 L480 12 L83 12 Z" fill="url(#ff-blade-top-p4)" />
+                    <path d="M83 12 L480 12 L460 14.5 L83 14.5 Z" fill="url(#ff-blade-bottom-p4)" />
                   </svg>
                 </div>
               </div>
@@ -1114,7 +1189,11 @@ export default function FocusTimer() {
               <div className="h-12 flex items-center justify-center mb-6">
                 <span
                   ref={textRef}
-                  className="font-orbitron uppercase text-[10px] md:text-xs tracking-[0.25em] text-white/70 font-semibold"
+                  className={`font-orbitron uppercase text-[10px] md:text-xs tracking-[0.25em] ${
+                    ritualText === "MISSION LOCKED"
+                      ? "text-red-500 font-extrabold text-glow animate-pulse"
+                      : "text-white/70 font-semibold"
+                  }`}
                 >
                   {ritualText}
                 </span>
@@ -1141,36 +1220,25 @@ export default function FocusTimer() {
             </div>
           ) : (
             // Full Focus Mode Main Layout
-            <div className="flex flex-col items-center justify-between w-full h-full p-12 z-20">
-              {/* TOP HEADER (Fades on inactivity) */}
-              <div
-                className={`w-full flex justify-between items-start transition-opacity duration-700 ${
-                  showControls ? "opacity-100" : "opacity-0 pointer-events-none"
-                }`}
-              >
-                <div className="flex flex-col">
-                  <span className="font-mono text-[9px] tracking-widest text-white/30 uppercase">Focus Streak</span>
-                  <span className="font-mono text-xs text-white font-bold tracking-wider">{streak} days</span>
-                </div>
-                <div className="flex flex-col items-end">
-                  <span className="font-mono text-[9px] tracking-widest text-white/30 uppercase">Status</span>
-                  <span className="font-orbitron text-xs text-glow text-white font-bold tracking-widest uppercase">
-                    {isRunning ? (mode === "focus" ? "Deep Focus Active" : "Break Time") : "Paused"}
-                  </span>
-                </div>
-              </div>
-
-              {/* CENTER TIMER AREA (Always visible) */}
-              <div className="flex flex-col items-center justify-center flex-1 max-w-xl text-center">
-                <span className="font-orbitron uppercase text-[9px] tracking-[0.3em] text-white/30 mb-2">MISSION</span>
-                <h2 className="font-orbitron uppercase text-2xl md:text-3xl tracking-[0.1em] font-extrabold text-white text-glow max-w-lg mb-6 leading-relaxed">
+            <div className="flex flex-col items-center justify-center w-full h-full p-12 z-20 relative">
+              {/* TOP CENTER: MISSION */}
+              <div className="absolute top-12 left-1/2 -translate-x-1/2 text-center flex flex-col items-center gap-1 z-20">
+                <span className="font-orbitron uppercase text-[9px] tracking-[0.3em] text-white/30">MISSION</span>
+                <h2 className="font-orbitron uppercase text-xl sm:text-2xl tracking-[0.1em] font-extrabold text-white text-glow max-w-lg leading-relaxed">
                   {mission}
                 </h2>
+              </div>
 
-                {/* Massive Timer */}
-                <h1 className="font-mono text-8xl sm:text-9xl md:text-[10rem] tracking-widest text-white text-glow select-none leading-none">
+              {/* CENTER: TIMER */}
+              <div className="flex flex-col items-center justify-center flex-1 max-w-xl text-center z-20">
+                {/* Huge Countdown Timer */}
+                <h1 className="font-mono text-8xl sm:text-9xl md:text-[11rem] tracking-widest text-white text-glow select-none leading-none">
                   {formatTime(timeLeft)}
                 </h1>
+
+                <span className="font-orbitron text-xs text-glow text-white font-bold tracking-widest uppercase mt-4 block">
+                  {mode === "focus" ? "Deep Focus Active" : "Refueling Active"}
+                </span>
 
                 {/* Sleek Glowing Progress Bar */}
                 <div className="w-64 sm:w-80 h-[2px] bg-white/10 rounded-full overflow-hidden mt-8 relative shadow-[0_0_10px_rgba(255,255,255,0.05)]">
@@ -1179,16 +1247,56 @@ export default function FocusTimer() {
                     style={{ width: `${progress}%` }}
                   />
                 </div>
-
-                {/* Small indicator */}
-                <span className="font-mono text-[9px] tracking-widest text-white/20 uppercase mt-4">
-                  {mode === "focus" ? "ACTIVE DUEL" : "REFUELING"}
-                </span>
               </div>
 
-              {/* BOTTOM CONTROLS BAR (Fades on inactivity) */}
+              {/* RIGHT SIDE PANEL: LIVE STATISTICS */}
               <div
-                className={`w-full flex flex-col md:flex-row justify-between items-center gap-6 mt-auto transition-opacity duration-700 ${
+                className={`absolute right-12 top-1/2 -translate-y-1/2 w-64 bg-black/40 border border-white/5 backdrop-blur-md p-6 rounded-lg flex flex-col gap-4 z-30 transition-opacity duration-700 shadow-[0_0_25px_rgba(0,0,0,0.6)] ${
+                  showControls ? "opacity-100" : "opacity-0 pointer-events-none"
+                }`}
+              >
+                <div className="pb-2 border-b border-white/5">
+                  <span className="font-orbitron uppercase text-[9px] tracking-widest text-white/40">Live Statistics</span>
+                </div>
+
+                <div className="flex flex-col gap-3">
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="font-mono text-white/40 uppercase text-[9px] tracking-wider">Today&apos;s Focus</span>
+                    <span className="font-mono text-white font-bold">{formatTodayFocus(todayFocusMinutes)}</span>
+                  </div>
+
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="font-mono text-white/40 uppercase text-[9px] tracking-wider">Completed Sessions</span>
+                    <span className="font-mono text-white font-bold">{completedSessions}</span>
+                  </div>
+
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="font-mono text-white/40 uppercase text-[9px] tracking-wider">Current Streak</span>
+                    <span className="font-mono text-white font-bold">{streak} Sessions</span>
+                  </div>
+
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="font-mono text-white/40 uppercase text-[9px] tracking-wider">Distractions</span>
+                    <span className="font-mono text-white font-bold text-red-400">{distractions}</span>
+                  </div>
+
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="font-mono text-white/40 uppercase text-[9px] tracking-wider">Current Env</span>
+                    <span className="font-mono text-white font-bold uppercase text-[10px]">
+                      {formatSoundName(selectedSound)}
+                    </span>
+                  </div>
+
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="font-mono text-white/40 uppercase text-[9px] tracking-wider">Remaining Time</span>
+                    <span className="font-mono text-white font-bold text-glow">{formatRemainingFocus(timeLeft)}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* BOTTOM CENTER: CONTROLS */}
+              <div
+                className={`absolute bottom-12 left-12 right-12 flex flex-col md:flex-row justify-between items-center gap-6 z-30 transition-opacity duration-700 ${
                   showControls ? "opacity-100" : "opacity-0 pointer-events-none"
                 }`}
               >
@@ -1212,13 +1320,19 @@ export default function FocusTimer() {
                   </div>
                   {selectedSound && (
                     <div className="flex items-center gap-2 mt-1 w-full">
-                      <Volume2 className="w-3.5 h-3.5 text-white/40 shrink-0" />
+                      <button
+                        onClick={toggleMute}
+                        className="text-white/40 hover:text-white shrink-0 cursor-pointer"
+                        title={isMuted ? "Unmute Ambient" : "Mute Ambient"}
+                      >
+                        <Volume2 className={`w-3.5 h-3.5 ${isMuted ? "opacity-30 line-through" : ""}`} />
+                      </button>
                       <input
                         type="range"
                         min="0"
                         max="1"
                         step="0.05"
-                        value={volume}
+                        value={isMuted ? 0 : volume}
                         onChange={(e) => handleVolumeChange(parseFloat(e.target.value))}
                         className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-white"
                       />
@@ -1228,14 +1342,17 @@ export default function FocusTimer() {
 
                 {/* Central Controls */}
                 <div className="flex items-center gap-4">
-                  {/* -5 Min */}
+                  {/* Start / Pause */}
                   <button
-                    onClick={() => adjustTime(-5)}
-                    disabled={timeLeft <= 300}
-                    className="px-2.5 py-1.5 border border-white/5 hover:border-white/20 text-[9px] font-mono text-white/40 hover:text-white transition-all rounded disabled:opacity-20 disabled:cursor-not-allowed cursor-pointer"
-                    title="Decrease 5 minutes"
+                    onClick={toggleTimer}
+                    className="w-12 h-12 bg-white hover:bg-neutral-200 text-black flex items-center justify-center rounded-full transition-all shadow-[0_0_15px_rgba(255,255,255,0.15)] active:scale-95 cursor-pointer"
+                    title={isRunning ? "Pause" : "Resume"}
                   >
-                    -5M
+                    {isRunning ? (
+                      <Pause className="w-5 h-5 fill-black" />
+                    ) : (
+                      <Play className="w-5 h-5 fill-black ml-0.5" />
+                    )}
                   </button>
 
                   {/* Reset */}
@@ -1247,45 +1364,33 @@ export default function FocusTimer() {
                     <RotateCcw className="w-4 h-4" />
                   </button>
 
-                  {/* Start / Pause */}
-                  <button
-                    onClick={toggleTimer}
-                    className="w-12 h-12 bg-white hover:bg-neutral-200 text-black flex items-center justify-center rounded-full transition-all shadow-[0_0_15px_rgba(255,255,255,0.15)] active:scale-95 cursor-pointer"
-                    title={isRunning ? "Pause" : "Start"}
-                  >
-                    {isRunning ? (
-                      <Pause className="w-5 h-5 fill-black" />
-                    ) : (
-                      <Play className="w-5 h-5 fill-black ml-0.5" />
-                    )}
-                  </button>
-
-                  {/* Stop */}
+                  {/* End Session (Stop) */}
                   <button
                     onClick={stopTimer}
                     className="p-2.5 border border-white/5 hover:border-white/20 text-white/40 hover:text-white transition-all rounded-full cursor-pointer"
-                    title="Stop Session"
+                    title="End Session"
                   >
                     <Square className="w-4 h-4 fill-current" />
                   </button>
 
-                  {/* Increase Time */}
-                  <button
-                    onClick={() => adjustTime(5)}
-                    className="px-2.5 py-1.5 border border-white/5 hover:border-white/20 text-[9px] font-mono text-white/40 hover:text-white transition-all rounded cursor-pointer"
-                    title="Increase 5 minutes"
-                  >
-                    +5M
-                  </button>
+                  {/* Skip Break */}
+                  {mode === "break" && (
+                    <button
+                      onClick={skipBreak}
+                      className="px-3 py-1.5 border border-white/10 text-white font-orbitron uppercase text-[9px] tracking-widest hover:bg-white hover:text-black transition-all rounded cursor-pointer"
+                    >
+                      Skip Break
+                    </button>
+                  )}
                 </div>
 
-                {/* Exit Fullscreen (Right) */}
+                {/* Exit Focus Mode (Right) */}
                 <div className="w-64 flex justify-end">
                   <button
                     onClick={exitFullFocus}
                     className="px-4 py-2 border border-white/10 text-white font-orbitron uppercase text-[9px] tracking-widest hover:bg-white hover:text-black hover:border-white transition-all duration-300 flex items-center gap-2 cursor-pointer"
                   >
-                    <X className="w-3.5 h-3.5" /> Exit Full Focus
+                    <X className="w-3.5 h-3.5" /> Exit Focus Mode
                   </button>
                 </div>
               </div>
