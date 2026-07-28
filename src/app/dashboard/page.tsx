@@ -21,6 +21,39 @@ export default function DashboardPage() {
   const [isNewUser, setIsNewUser] = useState(false);
   const [greeting, setGreeting] = useState("WELCOME");
 
+  const [stats, setStats] = useState({
+    todaysFocusTime: 0,
+    completedSessions: 0,
+    focusStreak: 0,
+    distractions: 0,
+  });
+
+  const fetchStats = async () => {
+    try {
+      const res = await fetch("/api/focus-sessions/stats");
+      if (res.ok) {
+        const data = await res.json();
+        setStats(data);
+      }
+    } catch (err) {
+      console.error("Error fetching stats:", err);
+    }
+  };
+
+  useEffect(() => {
+    let timer: NodeJS.Timeout;
+    if (isSignedIn) {
+      timer = setTimeout(() => {
+        fetchStats();
+      }, 0);
+      window.addEventListener("focusSessionSaved", fetchStats);
+    }
+    return () => {
+      if (timer) clearTimeout(timer);
+      window.removeEventListener("focusSessionSaved", fetchStats);
+    };
+  }, [isSignedIn]);
+
   // Update clock in real-time
   useEffect(() => {
     const updateTime = () => {
@@ -185,14 +218,22 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          <div className="flex gap-8">
+          <div className="flex flex-wrap gap-8">
             <div className="flex flex-col">
-              <span className="font-mono text-[9px] tracking-widest text-white/30 uppercase">Combat Index</span>
-              <span className="font-mono text-lg text-white font-bold tracking-wider">ACTIVE</span>
+              <span className="font-mono text-[9px] tracking-widest text-white/30 uppercase">Today&apos;s Focus Time</span>
+              <span className="font-mono text-lg text-white font-bold tracking-wider">{stats.todaysFocusTime}m</span>
             </div>
             <div className="flex flex-col">
-              <span className="font-mono text-[9px] tracking-widest text-white/30 uppercase">Threat Level</span>
-              <span className="font-mono text-lg text-white font-bold tracking-wider">MODERATE</span>
+              <span className="font-mono text-[9px] tracking-widest text-white/30 uppercase">Completed Sessions</span>
+              <span className="font-mono text-lg text-white font-bold tracking-wider">{stats.completedSessions}</span>
+            </div>
+            <div className="flex flex-col">
+              <span className="font-mono text-[9px] tracking-widest text-white/30 uppercase">Focus Streak</span>
+              <span className="font-mono text-lg text-white font-bold tracking-wider">{stats.focusStreak}d</span>
+            </div>
+            <div className="flex flex-col">
+              <span className="font-mono text-[9px] tracking-widest text-white/30 uppercase">Distractions</span>
+              <span className="font-mono text-lg text-glow text-red-500 font-bold tracking-wider">{stats.distractions}</span>
             </div>
           </div>
         </section>
