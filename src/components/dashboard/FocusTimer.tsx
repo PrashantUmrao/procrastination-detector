@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Play, Pause, RotateCcw, Square, Volume2, Maximize2, X } from "lucide-react";
 import { audioSynthesizer } from "@/lib/audio";
 import { gsap } from "gsap";
+import FullscreenIntro from "@/components/cinematic/FullscreenIntro";
 
 interface FullscreenElement extends HTMLDivElement {
   webkitRequestFullscreen?: () => Promise<void>;
@@ -109,9 +110,9 @@ export default function FocusTimer() {
   const [volume, setVolume] = useState(0.5);
 
   // Full Focus Mode States
-  const [isFullFocusActive, setIsFullFocusActive] = useState(false);
-  const [isIntroCompleted, setIsIntroCompleted] = useState(false);
-  const [showControls, setShowControls] = useState(true);
+  const [focusOverlayState, setFocusOverlayState] = useState<"inactive" | "loading" | "active">("inactive");
+  const isFullFocusActive = focusOverlayState !== "inactive";
+  const isIntroCompleted = focusOverlayState === "active";
   const [streak, setStreak] = useState(0);
 
   // Side Panel Stats States
@@ -121,10 +122,6 @@ export default function FocusTimer() {
 
   // Overlay States
   const [isEntering, setIsEntering] = useState(false);
-  const [ritualText, setRitualText] = useState("");
-  const [isMissionRevealed, setIsMissionRevealed] = useState(false);
-  const [isTimerRevealed, setIsTimerRevealed] = useState(false);
-  const [isExitTransitionActive, setIsExitTransitionActive] = useState(false);
 
   // Completion Overlay States
   const [isCompletionActive, setIsCompletionActive] = useState(false);
@@ -134,8 +131,6 @@ export default function FocusTimer() {
   const [completedSessionType, setCompletedSessionType] = useState<"normal" | "lock-in">("normal");
 
   // Flow State Mode States
-  const [isFlowEntering, setIsFlowEntering] = useState(false);
-  const [flowEnteringText, setFlowEnteringText] = useState("");
   const [isFlowStateActive, setIsFlowStateActive] = useState(false);
   const [flowTime, setFlowTime] = useState(0);
   const [flowStartedAt, setFlowStartedAt] = useState<Date | null>(null);
@@ -168,16 +163,61 @@ export default function FocusTimer() {
   const sessionStartRef = useRef<Date | null>(null);
   const fullscreenContainerRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const mouseTimerRef = useRef<NodeJS.Timeout | null>(null);
+
   const leftTimeRef = useRef<number | null>(null);
 
-  // Sword and text animation refs
-  const swordImgRef = useRef<HTMLDivElement | null>(null);
-  const swordLightRef = useRef<HTMLDivElement | null>(null);
-  const textRef = useRef<HTMLSpanElement | null>(null);
-  const missionRef = useRef<HTMLDivElement | null>(null);
-  const timerRevealRef = useRef<HTMLDivElement | null>(null);
-  const exitOverlayRef = useRef<HTMLDivElement | null>(null);
+  const stateRef = useRef({
+    mode,
+    mission,
+    sessionDuration,
+    distractions,
+    pauseCount,
+    isLockInActive,
+    isFlowStateActive,
+    todayFocusMinutes,
+    completedSessions,
+    interruptionEvents,
+    fullscreenExits,
+    tabSwitches,
+    currentSessionId,
+    interruptionTimeline
+  });
+
+  useEffect(() => {
+    stateRef.current = {
+      mode,
+      mission,
+      sessionDuration,
+      distractions,
+      pauseCount,
+      isLockInActive,
+      isFlowStateActive,
+      todayFocusMinutes,
+      completedSessions,
+      interruptionEvents,
+      fullscreenExits,
+      tabSwitches,
+      currentSessionId,
+      interruptionTimeline
+    };
+  }, [
+    mode,
+    mission,
+    sessionDuration,
+    distractions,
+    pauseCount,
+    isLockInActive,
+    isFlowStateActive,
+    todayFocusMinutes,
+    completedSessions,
+    interruptionEvents,
+    fullscreenExits,
+    tabSwitches,
+    currentSessionId,
+    interruptionTimeline
+  ]);
+
+
 
   // Completion GSAP animation refs
   const compOverlayRef = useRef<HTMLDivElement | null>(null);
@@ -343,7 +383,8 @@ export default function FocusTimer() {
       setIsStateInitialized(true);
     };
     load();
-  }, [saveFocusSession]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Save state updates to localStorage
   useEffect(() => {
@@ -410,13 +451,13 @@ export default function FocusTimer() {
   }, []);
 
   // Focus Score Calculator
-  const calculateFocusScore = (completed: boolean, pauses: number, interruptions: number): number => {
+  const calculateFocusScore = useCallback((completed: boolean, pauses: number, interruptions: number): number => {
     if (!completed) return 40;
     let score = 100;
     score -= pauses * 5;
     score -= interruptions * 3;
     return Math.max(10, Math.min(100, score));
-  };
+  }, []);
 
   // Check achievements triggered this session
   const checkAchievements = useCallback((todayMins: number, duration: number, pauses: number, interruptions: number) => {
@@ -518,7 +559,7 @@ export default function FocusTimer() {
     } catch (e) {
       console.error("Failed to save anti-procrastination state:", e);
     }
-  }, [currentSessionId, mission, sessionDuration, timeLeft, distractions, pauseCount, fullscreenExits, tabSwitches, windowBlurEvents, interruptionTimeline, calculateAntiScore]);
+  }, [currentSessionId, mission, sessionDuration, timeLeft, distractions, pauseCount, fullscreenExits, tabSwitches, windowBlurEvents, interruptionTimeline, calculateAntiScore, calculateFocusScore]);
 
   // Asynchronous auto save to MongoDB
   const autoSaveSession = useCallback(async (summary: SessionSummary | LockInSummary) => {
@@ -626,278 +667,12 @@ export default function FocusTimer() {
     localStorage.setItem("pd_recent_focus_sessions", "[]");
   }, [saveFlowHistory]);
 
-  // Trigger cinematic sequence once Full Focus elements are mounted
-  useEffect(() => {
-    if (!isFullFocusActive || !isEntering || isIntroCompleted) return;
-    if (!textRef.current || !swordImgRef.current || !swordLightRef.current) return;
 
-    // Check prefers-reduced-motion
-    const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-
-    // Check skip logic (10-minute check)
-    const lastExitTime = localStorage.getItem("pd_last_focus_exit_time");
-    const exitDiff = lastExitTime ? Date.now() - parseInt(lastExitTime, 10) : Infinity;
-    const useShortIntro = exitDiff < 10 * 60 * 1000;
-
-    Promise.resolve().then(() => {
-      if (prefersReducedMotion) {
-        setIsIntroCompleted(true);
-        setIsMissionRevealed(true);
-        setIsTimerRevealed(true);
-        setIsEntering(false);
-        return;
-      }
-
-      if (useShortIntro) {
-        setRitualText("Entering Deep Focus...");
-        
-        const shortTl = gsap.timeline({
-          onComplete: () => {
-            setIsIntroCompleted(true);
-            setIsEntering(false);
-          }
-        });
-
-        shortTl.fromTo(textRef.current,
-          { opacity: 0, y: 5 },
-          { opacity: 1, y: 0, duration: 0.2, ease: "power2.out" }
-        )
-        .to(textRef.current,
-          { opacity: 0, y: -5, duration: 0.15, ease: "power2.in", delay: 0.25 }
-        )
-        .call(() => {
-          setIsMissionRevealed(true);
-        })
-        .fromTo(missionRef.current,
-          { opacity: 0 },
-          { opacity: 1, duration: 0.15 }
-        )
-        .delay(0.05)
-        .call(() => {
-          setIsTimerRevealed(true);
-        })
-        .fromTo(timerRevealRef.current,
-          { opacity: 0 },
-          { opacity: 1, duration: 0.15 }
-        );
-
-        return;
-      }
-
-      // Play full ritual sequence
-      if (isLockInActive) {
-        setRitualText("Loading Focus Environment...");
-        
-        gsap.killTweensOf(swordLightRef.current);
-        gsap.fromTo(swordLightRef.current,
-          { left: "0%", opacity: 0 },
-          { left: "100%", opacity: 1, duration: 2.2, repeat: -1, ease: "power1.inOut" }
-        );
-
-        const messages = [
-          "Loading Focus Environment...",
-          "Locking Workspace Components...",
-          "Activating Anti-Procrastination Shields...",
-          "Deep Work Protocols Active...",
-          "Locked In Active"
-        ];
-
-        const fullTl = gsap.timeline({
-          onComplete: () => {
-            gsap.to(textRef.current, {
-              opacity: 0,
-              duration: 0.3,
-              onComplete: () => {
-                setRitualText("MISSION LOCKED");
-                
-                const missionLockTl = gsap.timeline({
-                  onComplete: () => {
-                    gsap.to(textRef.current, {
-                      opacity: 0,
-                      duration: 0.4,
-                      onComplete: () => {
-                        const revealTl = gsap.timeline({
-                          onComplete: () => {
-                            setIsIntroCompleted(true);
-                            setIsEntering(false);
-                          }
-                        });
-
-                        setIsMissionRevealed(true);
-                        revealTl.fromTo(missionRef.current,
-                          { opacity: 0, y: 12 },
-                          { opacity: 1, y: 0, duration: 0.6, ease: "power2.out" }
-                        )
-                        .delay(1.0)
-                        .to(swordImgRef.current, {
-                          opacity: 0,
-                          duration: 0.7,
-                          ease: "power2.inOut"
-                        })
-                        .call(() => {
-                          setIsTimerRevealed(true);
-                        })
-                        .fromTo(timerRevealRef.current,
-                          { opacity: 0, scale: 0.96 },
-                          { opacity: 1, scale: 1, duration: 0.6, ease: "back.out(1.1)" },
-                          "-=0.3"
-                        );
-                      }
-                    });
-                  }
-                });
-
-                missionLockTl.fromTo(textRef.current,
-                  { opacity: 0, y: 5 },
-                  { opacity: 1, y: 0, duration: 0.35, ease: "power2.out" }
-                )
-                .delay(0.8);
-              }
-            });
-          }
-        });
-
-        messages.forEach((msg, idx) => {
-          fullTl.call(() => setRitualText(msg))
-            .fromTo(textRef.current,
-              { opacity: 0, filter: "blur(6px)", y: 8 },
-              { opacity: 1, filter: "blur(0px)", y: 0, duration: 0.22, ease: "power2.out" }
-            )
-            .to(textRef.current,
-              { opacity: 0, filter: "blur(6px)", y: -8, duration: 0.2, ease: "power2.in", delay: 0.16 }
-            );
-
-          if (idx === 4) {
-            fullTl.call(() => audioSynthesizer.playRitualChime(), undefined, "-=0.2")
-              .to(textRef.current, { delay: 0.7 });
-          }
-        });
-      } else {
-        setRitualText("Loading Focus Environment...");
-        
-        gsap.killTweensOf(swordLightRef.current);
-        gsap.fromTo(swordLightRef.current,
-          { left: "0%", opacity: 0 },
-          { left: "100%", opacity: 1, duration: 2.2, repeat: -1, ease: "power1.inOut" }
-        );
-
-        const messages = [
-          "Loading Focus Environment...",
-          "Closing Outside World...",
-          "Silencing Distractions...",
-          "Clearing Mental Noise...",
-          "Locking Current Mission...",
-          "Preparing Deep Work...",
-          "Entering Flow State...",
-          "Deep Focus Activated"
-        ];
-
-        const fullTl = gsap.timeline({
-          onComplete: () => {
-            gsap.to(textRef.current, {
-              opacity: 0,
-              duration: 0.3,
-              onComplete: () => {
-                setRitualText("MISSION LOCKED");
-                
-                const missionLockTl = gsap.timeline({
-                  onComplete: () => {
-                    gsap.to(textRef.current, {
-                      opacity: 0,
-                      duration: 0.4,
-                      onComplete: () => {
-                        const revealTl = gsap.timeline({
-                          onComplete: () => {
-                            setIsIntroCompleted(true);
-                            setIsEntering(false);
-                          }
-                        });
-
-                        setIsMissionRevealed(true);
-                        revealTl.fromTo(missionRef.current,
-                          { opacity: 0, y: 12 },
-                          { opacity: 1, y: 0, duration: 0.6, ease: "power2.out" }
-                        )
-                        .delay(1.0)
-                        .to(swordImgRef.current, {
-                          opacity: 0,
-                          duration: 0.7,
-                          ease: "power2.inOut"
-                        })
-                        .call(() => {
-                          setIsTimerRevealed(true);
-                        })
-                        .fromTo(timerRevealRef.current,
-                          { opacity: 0, scale: 0.96 },
-                          { opacity: 1, scale: 1, duration: 0.6, ease: "back.out(1.1)" },
-                          "-=0.3"
-                        );
-                      }
-                    });
-                  }
-                });
-
-                missionLockTl.fromTo(textRef.current,
-                  { opacity: 0, y: 5 },
-                  { opacity: 1, y: 0, duration: 0.35, ease: "power2.out" }
-                )
-                .delay(0.8);
-              }
-            });
-          }
-        });
-
-        messages.forEach((msg, idx) => {
-          fullTl.call(() => setRitualText(msg))
-            .fromTo(textRef.current,
-              { opacity: 0, filter: "blur(6px)", y: 8 },
-              { opacity: 1, filter: "blur(0px)", y: 0, duration: 0.22, ease: "power2.out" }
-            )
-            .to(textRef.current,
-              { opacity: 0, filter: "blur(6px)", y: -8, duration: 0.2, ease: "power2.in", delay: 0.16 }
-            );
-
-          if (idx === 7) {
-            fullTl.call(() => audioSynthesizer.playRitualChime(), undefined, "-=0.2")
-              .to(textRef.current, { delay: 0.7 });
-          }
-        });
-      }
-    });
-  }, [isFullFocusActive, isEntering, isIntroCompleted, isLockInActive]);
 
   // Flow Entry Cinematic Ritual sequence
   const enterFlowStateRitual = useCallback((onCompleteRitual: () => void) => {
-    setIsFlowEntering(true);
-    setFlowEnteringText("FLOW STATE DETECTED");
-    audioSynthesizer.setAmbientVolume(volume * 0.25);
-
-    const messages = [
-      "FLOW STATE DETECTED",
-      "Mind Stable",
-      "No Interruptions",
-      "Deep Work Confirmed",
-      "Entering Flow State..."
-    ];
-
-    const tl = gsap.timeline({
-      onComplete: () => {
-        setIsFlowEntering(false);
-        onCompleteRitual();
-      }
-    });
-
-    messages.forEach((msg) => {
-      tl.call(() => setFlowEnteringText(msg))
-        .fromTo(textRef.current,
-          { opacity: 0, filter: "blur(8px)", y: 10 },
-          { opacity: 1, filter: "blur(0px)", y: 0, duration: 0.55, ease: "power2.out" }
-        )
-        .to(textRef.current,
-          { opacity: 0, filter: "blur(8px)", y: -10, duration: 0.5, ease: "power2.in", delay: 0.6 }
-        );
-    });
-  }, [volume]);
+    onCompleteRitual();
+  }, []);
 
   // Distraction Recorder
   const recordInterruption = useCallback((type: "fullscreen-exit" | "visibility-hidden" | "window-blur") => {
@@ -1022,6 +797,228 @@ export default function FocusTimer() {
     };
   }, [isFullFocusActive, isIntroCompleted, isCompletionActive, recordInterruption, handleReturn]);
 
+  const handleIntroComplete = useCallback(() => {
+    setFocusOverlayState("active");
+    setIsEntering(false);
+  }, []);
+
+  const handleTimerComplete = useCallback(() => {
+    setIsRunning(false);
+
+    const {
+      mode,
+      mission,
+      sessionDuration,
+      distractions,
+      pauseCount,
+      isLockInActive,
+      isFlowStateActive,
+      todayFocusMinutes,
+      interruptionEvents,
+      fullscreenExits,
+      tabSwitches
+    } = stateRef.current;
+
+    if (mode === "focus") {
+      audioSynthesizer.playFocusEnd();
+
+      const start = sessionStartRef.current || new Date(Date.now() - sessionDuration * 1000);
+      const end = new Date();
+      const score = calculateFocusScore(true, pauseCount, distractions);
+      
+      if (isLockInActive) {
+        const achievements = [ACHIEVEMENTS[11]];
+        if (distractions === 0) {
+          achievements.push(ACHIEVEMENTS[12]);
+          achievements.push(ACHIEVEMENTS[14]);
+        }
+        if (sessionDuration >= 60 * 60) {
+          achievements.push(ACHIEVEMENTS[13]);
+        }
+        if (sessionDuration >= 90 * 60) {
+          achievements.push(ACHIEVEMENTS[15]);
+        }
+
+        const summary = {
+          mission,
+          focusDuration: sessionDuration,
+          breakDuration: 0,
+          startedAt: start,
+          endedAt: end,
+          completed: true,
+          focusScore: score,
+          pauseCount,
+          distractionCount: distractions,
+          achievementIds: achievements.map((a) => a.id)
+        };
+
+        setSessionSummary(summary);
+        setEarnedAchievements(achievements);
+        setIsCompletionActive(true);
+
+        autoSaveLockInSession({
+          ...summary,
+          lockDuration: sessionDuration,
+          focusTime: sessionDuration,
+          breakTime: 0,
+          interruptionEvents,
+          fullscreenExits,
+          tabSwitches
+        });
+
+        // Complete state save
+        saveAntiProcrastinationState("completed");
+        setIsLockInActive(false);
+        setIsLocked(false);
+      } else {
+        let consecutive = 0;
+        try {
+          const recentStr = localStorage.getItem("pd_recent_focus_sessions") || "[]";
+          const recent = JSON.parse(recentStr);
+          recent.push({ completed: true, score, distractions, timestamp: Date.now() });
+          if (recent.length > 3) recent.shift();
+          localStorage.setItem("pd_recent_focus_sessions", JSON.stringify(recent));
+
+          consecutive = recent.filter(
+            (s: { completed: boolean; score: number; distractions: number; timestamp: number }) => s.completed && s.score >= FLOW_MIN_FOCUS_SCORE && s.distractions <= FLOW_MAX_DISTRACTIONS_ALLOWED
+          ).length;
+        } catch {}
+
+        const isFlowTriggered = !isFlowStateActive && consecutive >= FLOW_CONSECUTIVE_SESSIONS_REQUIRED;
+
+        if (isFlowTriggered) {
+          enterFlowStateRitual(() => {
+            setIsFlowStateActive(true);
+            setFlowStartedAt(new Date());
+            setFlowTime(0);
+            setFlowSessionsCompleted(0);
+            setFlowFocusScores([]);
+            audioSynthesizer.enableFlowAudio();
+
+            setMode("focus");
+            const nextDur = 25 * 60;
+            setSessionDuration(nextDur);
+            setTimeLeft(nextDur);
+            setIsLocked(true);
+            setDistractions(0);
+            setPauseCount(0);
+            
+            const sId = "session_" + Date.now() + "_" + Math.floor(Math.random() * 1000);
+            setCurrentSessionId(sId);
+            setWindowBlurEvents(0);
+            setFullscreenExits(0);
+            setTabSwitches(0);
+            const flowInitTimeline = [{ timestamp: new Date(), event: "Focus Started", elapsed: 0, remaining: nextDur }];
+            setInterruptionTimeline(flowInitTimeline);
+
+            sessionStartRef.current = new Date();
+
+            fetch("/api/anti-procrastination/session", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                sessionId: sId,
+                mission,
+                focusDuration: 0,
+                remainingDuration: nextDur,
+                distractionCount: 0,
+                pauseCount: 0,
+                fullscreenExits: 0,
+                tabSwitches: 0,
+                windowBlurEvents: 0,
+                interruptionTimeline: flowInitTimeline,
+                sessionStatus: "active",
+                focusScore: score,
+                antiProcrastinationScore: calculateAntiScore(false, 0, 0),
+                startedAt: new Date().toISOString(),
+                endedAt: new Date().toISOString()
+              })
+            }).catch(() => {});
+
+            setTimeout(() => {
+              setIsRunning(true);
+            }, 100);
+          });
+        } else if (isFlowStateActive) {
+          setFlowSessionsCompleted((p) => p + 1);
+          setFlowFocusScores((p) => [...p, score]);
+
+          const achievements = checkFlowAchievements(score);
+          const achievementIds = achievements.map((a) => a.id);
+
+          const summary = {
+            mission,
+            focusDuration: sessionDuration,
+            breakDuration: 5 * 60,
+            startedAt: start,
+            endedAt: end,
+            completed: true,
+            focusScore: score,
+            pauseCount,
+            distractionCount: distractions,
+            achievementIds
+          };
+
+          setSessionSummary(summary);
+          setEarnedAchievements(achievements);
+          setIsCompletionActive(true);
+          setIsLocked(false);
+
+          autoSaveSession(summary);
+          saveAntiProcrastinationState("completed");
+        } else {
+          const achievements = checkAchievements(todayFocusMinutes, sessionDuration, pauseCount, distractions);
+          const achievementIds = achievements.map((a) => a.id);
+
+          const summary = {
+            mission,
+            focusDuration: sessionDuration,
+            breakDuration: 5 * 60,
+            startedAt: start,
+            endedAt: end,
+            completed: true,
+            focusScore: score,
+            pauseCount,
+            distractionCount: distractions,
+            achievementIds
+          };
+
+          setSessionSummary(summary);
+          setEarnedAchievements(achievements);
+          setIsCompletionActive(true);
+          setIsLocked(false);
+
+          autoSaveSession(summary);
+          saveAntiProcrastinationState("completed");
+        }
+      }
+
+      sessionStartRef.current = null;
+    } else {
+      audioSynthesizer.playFocusStart();
+      setMode("focus");
+      const nextDur = 25 * 60;
+      setSessionDuration(nextDur);
+      setTimeLeft(nextDur);
+      setIsLocked(true);
+      setDistractions(0);
+      setPauseCount(0);
+      sessionStartRef.current = null;
+      setTimeout(() => {
+        setIsRunning(true);
+      }, 100);
+    }
+  }, [
+    calculateFocusScore,
+    autoSaveLockInSession,
+    saveAntiProcrastinationState,
+    calculateAntiScore,
+    enterFlowStateRitual,
+    checkFlowAchievements,
+    autoSaveSession,
+    checkAchievements
+  ]);
+
   // Timer Tick Engine
   useEffect(() => {
     if (isRunning) {
@@ -1030,6 +1027,7 @@ export default function FocusTimer() {
       }
 
       timerRef.current = setInterval(() => {
+        const { isFlowStateActive, distractions, pauseCount } = stateRef.current;
         if (isFlowStateActive && (distractions > FLOW_MAX_DISTRACTIONS_ALLOWED || pauseCount > 2)) {
           clearInterval(timerRef.current!);
           setIsRunning(false);
@@ -1040,194 +1038,9 @@ export default function FocusTimer() {
         setTimeLeft((prev) => {
           if (prev <= 1) {
             clearInterval(timerRef.current!);
-            setIsRunning(false);
-
-            if (mode === "focus") {
-              audioSynthesizer.playFocusEnd();
-
-              const start = sessionStartRef.current || new Date(Date.now() - sessionDuration * 1000);
-              const end = new Date();
-              const score = calculateFocusScore(true, pauseCount, distractions);
-              
-              if (isLockInActive) {
-                const achievements = [ACHIEVEMENTS[11]];
-                if (distractions === 0) {
-                  achievements.push(ACHIEVEMENTS[12]);
-                  achievements.push(ACHIEVEMENTS[14]);
-                }
-                if (sessionDuration >= 60 * 60) {
-                  achievements.push(ACHIEVEMENTS[13]);
-                }
-                if (sessionDuration >= 90 * 60) {
-                  achievements.push(ACHIEVEMENTS[15]);
-                }
-
-                const summary = {
-                  mission,
-                  focusDuration: sessionDuration,
-                  breakDuration: 0,
-                  startedAt: start,
-                  endedAt: end,
-                  completed: true,
-                  focusScore: score,
-                  pauseCount,
-                  distractionCount: distractions,
-                  achievementIds: achievements.map((a) => a.id)
-                };
-
-                setSessionSummary(summary);
-                setEarnedAchievements(achievements);
-                setIsCompletionActive(true);
-
-                autoSaveLockInSession({
-                  ...summary,
-                  lockDuration: sessionDuration,
-                  focusTime: sessionDuration,
-                  breakTime: 0,
-                  interruptionEvents,
-                  fullscreenExits,
-                  tabSwitches
-                });
-
-                // Complete state save
-                saveAntiProcrastinationState("completed");
-                setIsLockInActive(false);
-              } else {
-                let consecutive = 0;
-                try {
-                  const recentStr = localStorage.getItem("pd_recent_focus_sessions") || "[]";
-                  const recent = JSON.parse(recentStr);
-                  recent.push({ completed: true, score, distractions, timestamp: Date.now() });
-                  if (recent.length > 3) recent.shift();
-                  localStorage.setItem("pd_recent_focus_sessions", JSON.stringify(recent));
-
-                  consecutive = recent.filter(
-                    (s: { completed: boolean; score: number; distractions: number; timestamp: number }) => s.completed && s.score >= FLOW_MIN_FOCUS_SCORE && s.distractions <= FLOW_MAX_DISTRACTIONS_ALLOWED
-                  ).length;
-                } catch {}
-
-                const isFlowTriggered = !isFlowStateActive && consecutive >= FLOW_CONSECUTIVE_SESSIONS_REQUIRED;
-
-                if (isFlowTriggered) {
-                  enterFlowStateRitual(() => {
-                    setIsFlowStateActive(true);
-                    setFlowStartedAt(new Date());
-                    setFlowTime(0);
-                    setFlowSessionsCompleted(0);
-                    setFlowFocusScores([]);
-                    audioSynthesizer.enableFlowAudio();
-
-                    setMode("focus");
-                    const nextDur = 25 * 60;
-                    setSessionDuration(nextDur);
-                    setTimeLeft(nextDur);
-                    setIsLocked(true);
-                    setDistractions(0);
-                    setPauseCount(0);
-                    
-                    const sId = "session_" + Date.now() + "_" + Math.floor(Math.random() * 1000);
-                    setCurrentSessionId(sId);
-                    setWindowBlurEvents(0);
-                    setFullscreenExits(0);
-                    setTabSwitches(0);
-                    const flowInitTimeline = [{ timestamp: new Date(), event: "Focus Started", elapsed: 0, remaining: nextDur }];
-                    setInterruptionTimeline(flowInitTimeline);
-
-                    sessionStartRef.current = new Date();
-
-                    fetch("/api/anti-procrastination/session", {
-                      method: "POST",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({
-                        sessionId: sId,
-                        mission,
-                        focusDuration: 0,
-                        remainingDuration: nextDur,
-                        distractionCount: 0,
-                        pauseCount: 0,
-                        fullscreenExits: 0,
-                        tabSwitches: 0,
-                        windowBlurEvents: 0,
-                        interruptionTimeline: flowInitTimeline,
-                        sessionStatus: "active",
-                        focusScore: score,
-                        antiProcrastinationScore: calculateAntiScore(false, 0, 0),
-                        startedAt: new Date().toISOString(),
-                        endedAt: new Date().toISOString()
-                      })
-                    }).catch(() => {});
-
-                    setTimeout(() => {
-                      setIsRunning(true);
-                    }, 100);
-                  });
-                } else if (isFlowStateActive) {
-                  setFlowSessionsCompleted((p) => p + 1);
-                  setFlowFocusScores((p) => [...p, score]);
-
-                  const achievements = checkFlowAchievements(score);
-                  const achievementIds = achievements.map((a) => a.id);
-
-                  const summary = {
-                    mission,
-                    focusDuration: sessionDuration,
-                    breakDuration: 5 * 60,
-                    startedAt: start,
-                    endedAt: end,
-                    completed: true,
-                    focusScore: score,
-                    pauseCount,
-                    distractionCount: distractions,
-                    achievementIds
-                  };
-
-                  setSessionSummary(summary);
-                  setEarnedAchievements(achievements);
-                  setIsCompletionActive(true);
-
-                  autoSaveSession(summary);
-                  saveAntiProcrastinationState("completed");
-                } else {
-                  const achievements = checkAchievements(todayFocusMinutes, sessionDuration, pauseCount, distractions);
-                  const achievementIds = achievements.map((a) => a.id);
-
-                  const summary = {
-                    mission,
-                    focusDuration: sessionDuration,
-                    breakDuration: 5 * 60,
-                    startedAt: start,
-                    endedAt: end,
-                    completed: true,
-                    focusScore: score,
-                    pauseCount,
-                    distractionCount: distractions,
-                    achievementIds
-                  };
-
-                  setSessionSummary(summary);
-                  setEarnedAchievements(achievements);
-                  setIsCompletionActive(true);
-
-                  autoSaveSession(summary);
-                  saveAntiProcrastinationState("completed");
-                }
-              }
-
-              sessionStartRef.current = null;
-            } else {
-              audioSynthesizer.playFocusStart();
-              setMode("focus");
-              const nextDur = 25 * 60;
-              setSessionDuration(nextDur);
-              setTimeLeft(nextDur);
-              setIsLocked(true);
-              setDistractions(0);
-              setPauseCount(0);
-              sessionStartRef.current = null;
-              setTimeout(() => {
-                setIsRunning(true);
-              }, 100);
-            }
+            setTimeout(() => {
+              handleTimerComplete();
+            }, 0);
             return 0;
           }
           return prev - 1;
@@ -1241,7 +1054,7 @@ export default function FocusTimer() {
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };
-  }, [isRunning, mode, mission, sessionDuration, distractions, pauseCount, todayFocusMinutes, completedSessions, autoSaveSession, checkAchievements, isFlowStateActive, enterFlowStateRitual, breakFlowState, checkFlowAchievements, isLockInActive, autoSaveLockInSession, interruptionEvents, fullscreenExits, tabSwitches, currentSessionId, timeLeft, interruptionTimeline, saveAntiProcrastinationState, calculateAntiScore]);
+  }, [isRunning, breakFlowState, handleTimerComplete]);
 
   const switchMode = useCallback((newMode: "focus" | "break") => {
     setIsRunning(false);
@@ -1431,21 +1244,7 @@ export default function FocusTimer() {
     });
   }, [volume]);
 
-  // Skip Transition
-  const skipIntro = () => {
-    if (isIntroCompleted) return;
 
-    gsap.killTweensOf([swordImgRef.current, swordLightRef.current, textRef.current, missionRef.current, timerRevealRef.current]);
-
-    setIsIntroCompleted(true);
-    setIsEntering(false);
-    setIsMissionRevealed(true);
-    setIsTimerRevealed(true);
-
-    if (selectedSound) {
-      audioSynthesizer.fadeAmbientIn(selectedSound, volumeRef.current, 1.0);
-    }
-  };
 
   // Full Focus Entry / Exit Triggers
   const enterFullFocus = useCallback(async () => {
@@ -1466,10 +1265,7 @@ export default function FocusTimer() {
           await container.msRequestFullscreen();
         }
 
-        setIsFullFocusActive(true);
-        setIsIntroCompleted(false);
-        setIsMissionRevealed(false);
-        setIsTimerRevealed(false);
+        setFocusOverlayState("loading");
 
         // Start timer in the background immediately!
         setIsRunning(true);
@@ -1523,56 +1319,40 @@ export default function FocusTimer() {
       console.error("Failed to enter fullscreen:", err);
       setIsEntering(false);
     }
-  }, [mission, isEntering, selectedSound, sessionDuration, calculateAntiScore]);
+  }, [mission, isEntering, selectedSound, sessionDuration, calculateAntiScore, calculateFocusScore]);
 
   const exitFullFocus = useCallback(async () => {
-    if (isExitTransitionActive) return;
-
     if (isFlowStateActive) {
       breakFlowState();
     }
 
-    setIsExitTransitionActive(true);
-    
-    // Animate exit overlay
-    const exitTl = gsap.timeline({
-      onComplete: async () => {
-        try {
-          const doc = document as FullscreenDocument;
-          if (doc.fullscreenElement) {
-            if (doc.exitFullscreen) {
-              await doc.exitFullscreen();
-            } else if (doc.webkitExitFullscreen) {
-              await doc.webkitExitFullscreen();
-            } else if (doc.mozCancelFullScreen) {
-              await doc.mozCancelFullScreen();
-            } else if (doc.msExitFullscreen) {
-              await doc.msExitFullscreen();
-            }
-          }
-        } catch (err) {
-          console.error("Failed to exit fullscreen:", err);
-        } finally {
-          setIsFullFocusActive(false);
-          setIsExitTransitionActive(false);
-          localStorage.setItem("pd_last_focus_exit_time", Date.now().toString());
+    try {
+      const doc = document as FullscreenDocument;
+      if (doc.fullscreenElement) {
+        if (doc.exitFullscreen) {
+          await doc.exitFullscreen();
+        } else if (doc.webkitExitFullscreen) {
+          await doc.webkitExitFullscreen();
+        } else if (doc.mozCancelFullScreen) {
+          await doc.mozCancelFullScreen();
+        } else if (doc.msExitFullscreen) {
+          await doc.msExitFullscreen();
         }
       }
-    });
-
-    exitTl.fromTo(exitOverlayRef.current,
-      { opacity: 0 },
-      { opacity: 1, duration: 0.5, ease: "power2.inOut" }
-    )
-    .delay(1.0);
-  }, [isExitTransitionActive, isFlowStateActive, breakFlowState]);
+    } catch (err) {
+      console.error("Failed to exit fullscreen:", err);
+    } finally {
+      setFocusOverlayState("inactive");
+      localStorage.setItem("pd_last_focus_exit_time", Date.now().toString());
+    }
+  }, [isFlowStateActive, breakFlowState]);
 
   // Sync Fullscreen browser changes
   useEffect(() => {
     const handleFullscreenChange = () => {
       const isCurrentlyFullscreen = document.fullscreenElement === fullscreenContainerRef.current;
       if (!isCurrentlyFullscreen && isFullFocusActive) {
-        setIsFullFocusActive(false);
+        setFocusOverlayState("inactive");
         if (isFlowStateActive) {
           breakFlowState();
         }
@@ -1792,32 +1572,7 @@ export default function FocusTimer() {
     isLockInActive,
   ]);
 
-  // Auto-hiding Controls
-  useEffect(() => {
-    if (!isFullFocusActive || !isIntroCompleted || isCompletionActive) return;
 
-    const handleMouseMove = () => {
-      setShowControls(true);
-
-      if (mouseTimerRef.current) {
-        clearTimeout(mouseTimerRef.current);
-      }
-
-      mouseTimerRef.current = setTimeout(() => {
-        setShowControls(false);
-      }, 4000);
-    };
-
-    handleMouseMove();
-
-    window.addEventListener("mousemove", handleMouseMove);
-    return () => {
-      window.removeEventListener("mousemove", handleMouseMove);
-      if (mouseTimerRef.current) {
-        clearTimeout(mouseTimerRef.current);
-      }
-    };
-  }, [isFullFocusActive, isIntroCompleted, isCompletionActive]);
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -1843,11 +1598,7 @@ export default function FocusTimer() {
     return "Lock In Again";
   };
 
-  const getFlowStabilityMeter = () => {
-    if (distractions === 0) return { bar: "█████████████", label: "Excellent", color: "text-sky-400" };
-    if (distractions === 1) return { bar: "█████████░░░░", label: "Stable", color: "text-white/70" };
-    return { bar: "████░░░░░░░░░", label: "Unstable", color: "text-red-400" };
-  };
+
 
   // Coaching guidance support messages
   const getCoachingMessage = (elapsedSecs: number, remainingSecs: number) => {
@@ -1982,10 +1733,7 @@ export default function FocusTimer() {
           await container.msRequestFullscreen();
         }
 
-        setIsFullFocusActive(true);
-        setIsIntroCompleted(false);
-        setIsMissionRevealed(false);
-        setIsTimerRevealed(false);
+        setFocusOverlayState("loading");
 
         setIsRunning(true);
 
@@ -2306,197 +2054,36 @@ export default function FocusTimer() {
           {/* Particle canvas */}
           <canvas ref={canvasRef} className="absolute inset-0 w-full h-full pointer-events-none z-10" />
 
-          {!isIntroCompleted ? (
-            // Cinematic Entry Sequence View
-            <div
-              onClick={skipIntro}
-              className="flex flex-col items-center justify-center z-20 w-full h-full cursor-pointer relative"
-              title="Click anywhere to skip transition"
-            >
-              <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_55%,rgba(0,0,0,0.92)_100%)] pointer-events-none" />
-
-              {/* Glowing vector sword centerpiece */}
-              <div
-                ref={swordImgRef}
-                className="relative w-full max-w-[340px] md:max-w-[440px] h-[24px] overflow-hidden flex items-center justify-center mb-10 transition-opacity duration-500"
-              >
-                <div
-                  ref={swordLightRef}
-                  className="absolute top-0 bottom-0 w-[4px] -translate-x-1/2 z-20 pointer-events-none"
-                  style={{
-                    background: "linear-gradient(to bottom, transparent 10%, #ffffff 50%, transparent 90%)",
-                    boxShadow: "0 0 15px 3px rgba(255, 255, 255, 0.95)",
-                  }}
-                />
-                <div
-                  className="w-full h-full flex items-center justify-center"
-                  style={{
-                    maskImage: "linear-gradient(to right, #000 0%, #000 33%, transparent 66%, transparent 100%)",
-                    WebkitMaskImage: "linear-gradient(to right, #000 0%, #000 33%, transparent 66%, transparent 100%)",
-                    maskSize: "300% 100%",
-                    WebkitMaskSize: "300% 100%",
-                    maskPosition: "100% 0%",
-                    WebkitMaskPosition: "100% 0%",
-                    maskRepeat: "no-repeat",
-                    WebkitMaskRepeat: "no-repeat",
-                  }}
-                >
-                  <svg
-                    width="100%"
-                    height="100%"
-                    viewBox="0 0 500 24"
-                    fill="none"
-                    xmlns="http://www.w3.org/2000/svg"
-                    className="w-full h-auto opacity-95"
-                  >
-                    <defs>
-                      <linearGradient id="ff-blade-top-p8" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#ffffff" />
-                        <stop offset="100%" stopColor="#b5b5b5" />
-                      </linearGradient>
-                      <linearGradient id="ff-blade-bottom-p8" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#8c8c8c" />
-                        <stop offset="100%" stopColor="#555555" />
-                      </linearGradient>
-                      <linearGradient id="ff-metal-bright-p8" x1="0" y1="0" x2="1" y2="0">
-                        <stop offset="0%" stopColor="#7a7a7a" />
-                        <stop offset="50%" stopColor="#ffffff" />
-                        <stop offset="100%" stopColor="#7a7a7a" />
-                      </linearGradient>
-                      <linearGradient id="ff-hilt-grad-p8" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#dcdcdc" />
-                        <stop offset="50%" stopColor="#aaaaaa" />
-                        <stop offset="100%" stopColor="#444444" />
-                      </linearGradient>
-                    </defs>
-                    <circle cx="20" cy="12" r="3.5" fill="url(#ff-metal-bright-p8)" stroke="#3a3a3a" strokeWidth="0.5" />
-                    <rect x="23.5" y="10.5" width="46.5" height="3" rx="1" fill="url(#ff-hilt-grad-p8)" />
-                    <line x1="33" y1="10.5" x2="33" y2="13.5" stroke="#3a3a3a" strokeWidth="0.5" />
-                    <line x1="43" y1="10.5" x2="43" y2="13.5" stroke="#3a3a3a" strokeWidth="0.5" />
-                    <line x1="53" y1="10.5" x2="53" y2="13.5" stroke="#3a3a3a" strokeWidth="0.5" />
-                    <line x1="63" y1="10.5" x2="63" y2="13.5" stroke="#3a3a3a" strokeWidth="0.5" />
-                    <rect
-                      x="70"
-                      y="4"
-                      width="5"
-                      height="16"
-                      rx="1"
-                      fill="url(#ff-metal-bright-p8)"
-                      stroke="#3a3a3a"
-                      strokeWidth="0.5"
-                    />
-                    <rect x="71.5" y="10.5" width="2" height="3" fill="#ffffff" />
-                    <rect x="75" y="9.5" width="8" height="5" fill="url(#ff-hilt-grad-p8)" />
-                    <path d="M83 9.5 L460 9.5 L480 12 L83 12 Z" fill="url(#ff-blade-top-p8)" />
-                    <path d="M83 12 L480 12 L460 14.5 L83 14.5 Z" fill="url(#ff-blade-bottom-p8)" />
-                  </svg>
-                </div>
-              </div>
-
-              {/* Protocol Messages */}
-              <div className="h-12 flex items-center justify-center mb-6">
-                <span
-                  ref={textRef}
-                  className={`font-orbitron uppercase text-[10px] md:text-xs tracking-[0.25em] ${
-                    ritualText.includes("LOCKED")
-                      ? "text-red-500 font-extrabold text-glow animate-pulse"
-                      : "text-white/70 font-semibold"
-                  }`}
-                >
-                  {ritualText}
-                </span>
-              </div>
-
-              {/* Mission reveal during animation */}
-              {isMissionRevealed && (
-                <div ref={missionRef} className="flex flex-col items-center gap-2 mb-4">
-                  <span className="font-orbitron uppercase text-[9px] tracking-[0.3em] text-white/30">MISSION</span>
-                  <h2 className="font-orbitron uppercase text-xl md:text-2xl tracking-[0.1em] font-extrabold text-white text-glow">
-                    {mission}
-                  </h2>
-                </div>
-              )}
-
-              {/* Timer reveal during animation */}
-              {isTimerRevealed && (
-                <div ref={timerRevealRef} className="flex flex-col items-center">
-                  <h1 className="font-mono text-7xl md:text-8xl tracking-widest text-glow text-white">
-                    {formatTime(timeLeft)}
-                  </h1>
-                </div>
-              )}
-            </div>
+          {focusOverlayState === "loading" ? (
+            <FullscreenIntro 
+              onClose={exitFullFocus} 
+              onComplete={handleIntroComplete} 
+            />
           ) : (
-            // Full Focus Mode Main Layout
-            <div className="flex flex-col items-center justify-center w-full h-full p-12 z-20 relative">
+            // Full Focus Mode Temporary Layout
+            <div className="flex flex-col items-center justify-center w-full h-full p-12 z-20 relative bg-black text-white">
               {/* TOP CENTER: MISSION */}
               <div className="absolute top-12 left-1/2 -translate-x-1/2 text-center flex flex-col items-center gap-1 z-20">
-                <span className={`font-orbitron uppercase text-[9px] tracking-[0.3em] transition-colors duration-1000 ${
-                  isLockInActive ? "text-red-400/40" : isFlowStateActive ? "text-sky-400/40" : "text-white/30"
-                }`}>
-                  {isLockInActive ? "LOCK IN ACTIVE" : isFlowStateActive ? "FLOW STATE" : "MISSION"}
-                </span>
-                <h2 className={`font-orbitron uppercase text-xl sm:text-2xl tracking-[0.1em] font-extrabold transition-colors duration-1000 max-w-lg leading-relaxed ${
-                  isLockInActive ? "text-red-300 text-red-glow animate-pulse" : isFlowStateActive ? "text-sky-100 text-sky-glow" : "text-white text-glow"
-                }`}>
+                <span className="font-orbitron uppercase text-[9px] tracking-[0.3em] text-white/30">MISSION</span>
+                <h2 className="font-orbitron uppercase text-xl sm:text-2xl tracking-[0.1em] font-extrabold text-white text-glow">
                   {mission}
                 </h2>
               </div>
 
               {/* CENTER: TIMER */}
               <div className="flex flex-col items-center justify-center flex-1 max-w-xl text-center z-20">
-                <h1 className={`font-mono text-8xl sm:text-9xl md:text-[11rem] tracking-widest select-none leading-none transition-colors duration-1000 ${
-                  isLockInActive ? "text-red-200 text-red-glow" : isFlowStateActive ? "text-sky-200 text-sky-glow" : "text-white text-glow"
-                }`}>
+                <h1 className="font-mono text-8xl sm:text-9xl md:text-[11rem] tracking-widest select-none leading-none text-white text-glow">
                   {formatTime(timeLeft)}
                 </h1>
-
-                <span className={`font-orbitron text-xs font-bold tracking-widest uppercase mt-4 block transition-colors duration-1000 ${
-                  isLockInActive ? "text-red-400 text-red-glow" : isFlowStateActive ? "text-sky-300/80 text-sky-glow" : "text-white text-glow"
-                }`}>
-                  {isLockInActive ? "EMERGENCY LOCK APPLIED" : isFlowStateActive ? "IMMERSIVE FLOW STABLE" : mode === "focus" ? "Deep Focus Active" : "Refueling Active"}
-                </span>
-
-                {/* Progress Bar */}
-                <div className={`w-64 sm:w-80 h-[2px] rounded-full overflow-hidden mt-8 relative shadow-[0_0_10px_rgba(255,255,255,0.05)] transition-colors duration-1000 ${
-                  isLockInActive ? "bg-red-950" : isFlowStateActive ? "bg-sky-950" : "bg-white/10"
-                }`}>
-                  <div
-                    className={`h-full transition-all duration-300 ease-linear ${
-                      isLockInActive
-                        ? "bg-red-500 shadow-[0_0_12px_rgba(239,68,68,0.95)]"
-                        : isFlowStateActive 
-                        ? "bg-sky-300 shadow-[0_0_12px_rgba(125,211,252,0.95)]" 
-                        : "bg-white shadow-[0_0_8px_rgba(255,255,255,0.95)]"
-                    }`}
-                    style={{ width: `${progress}%` }}
-                  />
-                </div>
-
-                {/* Flow Stability Meter */}
-                {isFlowStateActive && (
-                  <div className="flex flex-col items-center mt-6 gap-1 animate-pulse">
-                    <span className="font-mono text-[10px] tracking-widest text-sky-400/80">
-                      {getFlowStabilityMeter().bar}
-                    </span>
-                    <span className={`font-orbitron uppercase text-[8px] tracking-[0.2em] font-extrabold ${getFlowStabilityMeter().color}`}>
-                      Flow Stability: {getFlowStabilityMeter().label}
-                    </span>
-                  </div>
-                )}
               </div>
 
               {/* RIGHT SIDE PANEL: LIVE STATISTICS */}
               <div
-                className={`absolute right-12 top-1/2 -translate-y-1/2 w-64 bg-black/40 border backdrop-blur-md p-6 rounded-lg flex flex-col gap-4 z-30 transition-all duration-1000 shadow-[0_0_25px_rgba(0,0,0,0.6)] ${
-                  showControls ? "opacity-100" : "opacity-0 pointer-events-none"
-                } ${isLockInActive ? "border-red-500/10" : isFlowStateActive ? "border-sky-500/10" : "border-white/5"}`}
+                className="absolute right-12 top-1/2 -translate-y-1/2 w-64 bg-black/40 border border-white/5 backdrop-blur-md p-6 rounded-lg flex flex-col gap-4 z-30 shadow-[0_0_25px_rgba(0,0,0,0.6)]"
               >
-                <div className={`pb-2 border-b ${isLockInActive ? "border-red-500/10" : isFlowStateActive ? "border-sky-500/10" : "border-white/5"}`}>
-                  <span className={`font-orbitron uppercase text-[9px] tracking-widest transition-colors duration-1000 ${
-                    isLockInActive ? "text-red-400" : isFlowStateActive ? "text-sky-400" : "text-white/40"
-                  }`}>
-                    {isLockInActive ? "COMMITMENT STATS" : isFlowStateActive ? "FLOW METRICS" : "Live Statistics"}
+                <div className="pb-2 border-b border-white/5">
+                  <span className="font-orbitron uppercase text-[9px] tracking-widest text-white/40">
+                    Live Statistics
                   </span>
                 </div>
 
@@ -2527,163 +2114,104 @@ export default function FocusTimer() {
                       {distractions}
                     </span>
                   </div>
-
-                  {isFlowStateActive && (
-                    <div className="flex justify-between items-center text-xs pt-2 border-t border-sky-500/10">
-                      <span className="font-mono text-sky-400/80 uppercase text-[9px] tracking-wider">Flow Time</span>
-                      <span className="font-mono text-sky-300 font-extrabold text-sky-glow">
-                        {formatFlowTime(flowTime)}
-                      </span>
-                    </div>
-                  )}
-
-                  {isLockInActive && (
-                    <>
-                      <div className="flex justify-between items-center text-xs pt-2 border-t border-red-500/10">
-                        <span className="font-mono text-white/40 uppercase text-[9px] tracking-wider">Tab Switches</span>
-                        <span className="font-mono text-white font-bold">{tabSwitches}</span>
-                      </div>
-                      <div className="flex justify-between items-center text-xs">
-                        <span className="font-mono text-white/40 uppercase text-[9px] tracking-wider">FS Exits</span>
-                        <span className="font-mono text-white font-bold">{fullscreenExits}</span>
-                      </div>
-                    </>
-                  )}
                 </div>
               </div>
 
-              {/* BOTTOM CENTER: CONTROLS */}
-              <div
-                className={`absolute bottom-12 left-12 right-12 flex flex-col md:flex-row justify-between items-center gap-6 z-30 transition-opacity duration-700 ${
-                  showControls ? "opacity-100" : "opacity-0 pointer-events-none"
-                }`}
-              >
-                {/* Ambient Sounds */}
-                <div className="flex flex-col gap-2 items-start w-64">
-                  <span className="font-mono text-[9px] tracking-widest text-white/30 uppercase">Ambient Sound</span>
-                  <div className="flex flex-wrap gap-1.5">
-                    {["rain", "forest", "cafe", "brown", "white", "fireplace"].map((sound) => (
-                      <button
-                        key={sound}
-                        onClick={() => handleSoundSelect(sound)}
-                        className={`px-2 py-1 border text-[9px] font-mono uppercase tracking-wider rounded transition-all cursor-pointer ${
-                          selectedSound === sound
-                            ? isLockInActive
-                              ? "bg-red-400 text-black border-red-400 font-bold"
-                              : isFlowStateActive 
-                              ? "bg-sky-300 text-black border-sky-300 font-bold" 
-                              : "bg-white text-black border-white font-bold"
-                            : "border-white/5 text-white/40 hover:text-white/70 hover:border-white/20"
-                        }`}
-                      >
-                        {sound === "brown" ? "Brown" : sound === "white" ? "White" : sound}
-                      </button>
-                    ))}
+              {/* LEFT BOTTOM: AMBIENT SOUNDS */}
+              <div className="absolute bottom-12 left-12 z-30 flex flex-col gap-2 items-start w-64">
+                <span className="font-mono text-[9px] tracking-widest text-white/30 uppercase">Ambient Sound</span>
+                <div className="flex flex-wrap gap-1.5">
+                  {["rain", "forest", "cafe", "brown", "white", "fireplace"].map((sound) => (
+                    <button
+                      key={sound}
+                      onClick={() => handleSoundSelect(sound)}
+                      className={`px-2 py-1 border text-[9px] font-mono uppercase tracking-wider rounded transition-all cursor-pointer ${
+                        selectedSound === sound
+                          ? "bg-white text-black border-white font-bold"
+                          : "border-white/5 text-white/40 hover:text-white/70 hover:border-white/20"
+                      }`}
+                    >
+                      {sound === "brown" ? "Brown" : sound === "white" ? "White" : sound}
+                    </button>
+                  ))}
+                </div>
+                {selectedSound && (
+                  <div className="flex items-center gap-2 mt-1 w-full">
+                    <button
+                      onClick={toggleMute}
+                      className="text-white/40 hover:text-white shrink-0 cursor-pointer"
+                      title={isMuted ? "Unmute Ambient" : "Mute Ambient"}
+                    >
+                      <Volume2 className={`w-3.5 h-3.5 ${isMuted ? "opacity-30 line-through" : ""}`} />
+                    </button>
+                    <input
+                      type="range"
+                      min="0"
+                      max="1"
+                      step="0.05"
+                      value={isMuted ? 0 : volume}
+                      onChange={(e) => handleVolumeChange(parseFloat(e.target.value))}
+                      className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-white"
+                    />
                   </div>
-                  {selectedSound && (
-                    <div className="flex items-center gap-2 mt-1 w-full">
-                      <button
-                        onClick={toggleMute}
-                        className="text-white/40 hover:text-white shrink-0 cursor-pointer"
-                        title={isMuted ? "Unmute Ambient" : "Mute Ambient"}
-                      >
-                        <Volume2 className={`w-3.5 h-3.5 ${isMuted ? "opacity-30 line-through" : ""}`} />
-                      </button>
-                      <input
-                        type="range"
-                        min="0"
-                        max="1"
-                        step="0.05"
-                        value={isMuted ? 0 : volume}
-                        onChange={(e) => handleVolumeChange(parseFloat(e.target.value))}
-                        className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-white"
-                      />
-                    </div>
-                  )}
-                </div>
+                )}
+              </div>
 
-                {/* Central Controls */}
-                <div className="flex items-center gap-4">
+              {/* BOTTOM CENTER: CONTROLS */}
+              <div className="absolute bottom-12 left-1/2 -translate-x-1/2 z-30 flex items-center gap-4">
+                <button
+                  onClick={toggleTimer}
+                  className="w-12 h-12 flex items-center justify-center rounded-full bg-white hover:bg-neutral-200 text-black shadow-[0_0_15px_rgba(255,255,255,0.15)] transition-all active:scale-95 cursor-pointer"
+                  title={isRunning ? "Pause" : "Resume"}
+                >
+                  {isRunning ? (
+                    <Pause className="w-5 h-5 fill-black" />
+                  ) : (
+                    <Play className="w-5 h-5 fill-black ml-0.5" />
+                  )}
+                </button>
+
+                <button
+                  onClick={resetTimer}
+                  className="p-2.5 border border-white/5 hover:border-white/20 text-white/40 hover:text-white transition-all rounded-full cursor-pointer"
+                  title="Reset Timer"
+                >
+                  <RotateCcw className="w-4 h-4" />
+                </button>
+
+                <button
+                  onClick={stopTimer}
+                  className="p-2.5 border border-white/5 hover:border-white/20 text-white/40 hover:text-white transition-all rounded-full cursor-pointer"
+                  title="End Session"
+                >
+                  <Square className="w-4 h-4 fill-current" />
+                </button>
+
+                {mode === "break" && (
                   <button
-                    onClick={toggleTimer}
-                    className={`w-12 h-12 flex items-center justify-center rounded-full transition-all active:scale-95 cursor-pointer ${
-                      isLockInActive
-                        ? "bg-red-500 hover:bg-red-400 text-white shadow-[0_0_20px_rgba(239,68,68,0.35)]"
-                        : isFlowStateActive 
-                        ? "bg-sky-200 hover:bg-sky-100 text-black shadow-[0_0_20px_rgba(125,211,252,0.35)]" 
-                        : "bg-white hover:bg-neutral-200 text-black shadow-[0_0_15px_rgba(255,255,255,0.15)]"
-                    }`}
-                    title={isRunning ? "Pause" : "Resume"}
+                    onClick={skipBreak}
+                    className="px-3 py-1.5 border border-white/10 text-white font-orbitron uppercase text-[9px] tracking-widest hover:bg-white hover:text-black transition-all rounded cursor-pointer"
                   >
-                    {isRunning ? (
-                      <Pause className="w-5 h-5 fill-black" />
-                    ) : (
-                      <Play className="w-5 h-5 fill-black ml-0.5" />
-                    )}
+                    Skip Break
                   </button>
+                )}
+              </div>
 
-                  {!isFlowStateActive && !isLockInActive && (
-                    <button
-                      onClick={resetTimer}
-                      className="p-2.5 border border-white/5 hover:border-white/20 text-white/40 hover:text-white transition-all rounded-full cursor-pointer"
-                      title="Reset Timer"
-                    >
-                      <RotateCcw className="w-4 h-4" />
-                    </button>
-                  )}
-
-                  <button
-                    onClick={stopTimer}
-                    className="p-2.5 border border-white/5 hover:border-white/20 text-white/40 hover:text-white transition-all rounded-full cursor-pointer"
-                    title="End Session"
-                  >
-                    <Square className="w-4 h-4 fill-current" />
-                  </button>
-
-                  {mode === "break" && !isFlowStateActive && !isLockInActive && (
-                    <button
-                      onClick={skipBreak}
-                      className="px-3 py-1.5 border border-white/10 text-white font-orbitron uppercase text-[9px] tracking-widest hover:bg-white hover:text-black transition-all rounded cursor-pointer"
-                    >
-                      Skip Break
-                    </button>
-                  )}
-                </div>
-
-                {/* Exit Focus Mode Button */}
-                <div className="w-64 flex justify-end">
-                  {!isFlowStateActive && !isLockInActive && (
-                    <button
-                      onClick={exitFullFocus}
-                      className="px-4 py-2 border border-white/10 text-white font-orbitron uppercase text-[9px] tracking-widest hover:bg-white hover:text-black hover:border-white transition-all duration-300 flex items-center gap-2 cursor-pointer"
-                    >
-                      <X className="w-3.5 h-3.5" /> Exit Focus Mode
-                    </button>
-                  )}
-                </div>
+              {/* RIGHT BOTTOM: EXIT BUTTON */}
+              <div className="absolute bottom-12 right-12 z-30">
+                <button
+                  onClick={exitFullFocus}
+                  className="px-4 py-2 border border-white/10 text-white font-orbitron uppercase text-[9px] tracking-widest hover:bg-white hover:text-black hover:border-white transition-all duration-300 flex items-center gap-2 cursor-pointer"
+                >
+                  <X className="w-3.5 h-3.5" /> Exit Focus Mode
+                </button>
               </div>
             </div>
           )}
         </div>
       )}
 
-      {/* 3. EXIT SEQUENCE OVERLAY VIEW */}
-      {isExitTransitionActive && (
-        <div
-          ref={exitOverlayRef}
-          className="fixed inset-0 w-screen h-screen bg-black z-[100] flex flex-col items-center justify-center select-none overflow-hidden"
-          style={{ opacity: 0 }}
-        >
-          <div className="flex flex-col items-center gap-2">
-            <span className="font-orbitron uppercase text-[9px] tracking-[0.4em] text-white/30 block animate-pulse">
-              SESSION PRESERVED
-            </span>
-            <h2 className="font-orbitron uppercase text-lg sm:text-xl font-bold tracking-[0.2em] text-white/60">
-              Returning to Dashboard...
-            </h2>
-          </div>
-        </div>
-      )}
+
 
       {/* 4. COMPLETION OVERLAY VIEW */}
       {isCompletionActive && (
@@ -2927,20 +2455,7 @@ export default function FocusTimer() {
         </div>
       )}
 
-      {/* 5. FLOW STATE ENTRY OVERLAY VIEW */}
-      {isFlowEntering && (
-        <div className="fixed inset-0 w-screen h-screen bg-black z-[110] flex flex-col items-center justify-center select-none overflow-hidden font-inter">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(8,47,73,0.3)_0%,#000000_100%)] pointer-events-none" />
-          <div className="h-12 flex items-center justify-center">
-            <span
-              ref={textRef}
-              className="font-orbitron uppercase text-xs md:text-sm tracking-[0.3em] text-white text-glow animate-pulse"
-            >
-              {flowEnteringText}
-            </span>
-          </div>
-        </div>
-      )}
+
 
       {/* 6. FLOW INTERRUPTED MESSAGE OVERLAY */}
       {showFlowInterruptedMessage && (
