@@ -162,6 +162,7 @@ export default function FocusTimer() {
   const [showReviewTimeline, setShowReviewTimeline] = useState(false);
   const [interruptedElapsed, setInterruptedElapsed] = useState(0);
   const [interruptedRemaining, setInterruptedRemaining] = useState(0);
+  const [isStateInitialized, setIsStateInitialized] = useState(false);
 
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const sessionStartRef = useRef<Date | null>(null);
@@ -284,7 +285,7 @@ export default function FocusTimer() {
 
   // Load state on mount
   useEffect(() => {
-    const timer = setTimeout(() => {
+    const load = async () => {
       const savedMode = localStorage.getItem("pd_timer_mode") as "focus" | "break" | null;
       const savedTimeLeft = localStorage.getItem("pd_timer_time_left");
       const savedDuration = localStorage.getItem("pd_timer_duration");
@@ -339,9 +340,9 @@ export default function FocusTimer() {
       } else {
         if (savedTimeLeft) setTimeLeft(parseInt(savedTimeLeft, 10));
       }
-    }, 0);
-
-    return () => clearTimeout(timer);
+      setIsStateInitialized(true);
+    };
+    load();
   }, [saveFocusSession]);
 
   // Save state updates to localStorage
@@ -624,6 +625,246 @@ export default function FocusTimer() {
 
     localStorage.setItem("pd_recent_focus_sessions", "[]");
   }, [saveFlowHistory]);
+
+  // Trigger cinematic sequence once Full Focus elements are mounted
+  useEffect(() => {
+    if (!isFullFocusActive || !isEntering || isIntroCompleted) return;
+    if (!textRef.current || !swordImgRef.current || !swordLightRef.current) return;
+
+    // Check prefers-reduced-motion
+    const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+    // Check skip logic (10-minute check)
+    const lastExitTime = localStorage.getItem("pd_last_focus_exit_time");
+    const exitDiff = lastExitTime ? Date.now() - parseInt(lastExitTime, 10) : Infinity;
+    const useShortIntro = exitDiff < 10 * 60 * 1000;
+
+    Promise.resolve().then(() => {
+      if (prefersReducedMotion) {
+        setIsIntroCompleted(true);
+        setIsMissionRevealed(true);
+        setIsTimerRevealed(true);
+        setIsEntering(false);
+        return;
+      }
+
+      if (useShortIntro) {
+        setRitualText("Entering Deep Focus...");
+        
+        const shortTl = gsap.timeline({
+          onComplete: () => {
+            setIsIntroCompleted(true);
+            setIsEntering(false);
+          }
+        });
+
+        shortTl.fromTo(textRef.current,
+          { opacity: 0, y: 5 },
+          { opacity: 1, y: 0, duration: 0.2, ease: "power2.out" }
+        )
+        .to(textRef.current,
+          { opacity: 0, y: -5, duration: 0.15, ease: "power2.in", delay: 0.25 }
+        )
+        .call(() => {
+          setIsMissionRevealed(true);
+        })
+        .fromTo(missionRef.current,
+          { opacity: 0 },
+          { opacity: 1, duration: 0.15 }
+        )
+        .delay(0.05)
+        .call(() => {
+          setIsTimerRevealed(true);
+        })
+        .fromTo(timerRevealRef.current,
+          { opacity: 0 },
+          { opacity: 1, duration: 0.15 }
+        );
+
+        return;
+      }
+
+      // Play full ritual sequence
+      if (isLockInActive) {
+        setRitualText("Loading Focus Environment...");
+        
+        gsap.killTweensOf(swordLightRef.current);
+        gsap.fromTo(swordLightRef.current,
+          { left: "0%", opacity: 0 },
+          { left: "100%", opacity: 1, duration: 2.2, repeat: -1, ease: "power1.inOut" }
+        );
+
+        const messages = [
+          "Loading Focus Environment...",
+          "Locking Workspace Components...",
+          "Activating Anti-Procrastination Shields...",
+          "Deep Work Protocols Active...",
+          "Locked In Active"
+        ];
+
+        const fullTl = gsap.timeline({
+          onComplete: () => {
+            gsap.to(textRef.current, {
+              opacity: 0,
+              duration: 0.3,
+              onComplete: () => {
+                setRitualText("MISSION LOCKED");
+                
+                const missionLockTl = gsap.timeline({
+                  onComplete: () => {
+                    gsap.to(textRef.current, {
+                      opacity: 0,
+                      duration: 0.4,
+                      onComplete: () => {
+                        const revealTl = gsap.timeline({
+                          onComplete: () => {
+                            setIsIntroCompleted(true);
+                            setIsEntering(false);
+                          }
+                        });
+
+                        setIsMissionRevealed(true);
+                        revealTl.fromTo(missionRef.current,
+                          { opacity: 0, y: 12 },
+                          { opacity: 1, y: 0, duration: 0.6, ease: "power2.out" }
+                        )
+                        .delay(1.0)
+                        .to(swordImgRef.current, {
+                          opacity: 0,
+                          duration: 0.7,
+                          ease: "power2.inOut"
+                        })
+                        .call(() => {
+                          setIsTimerRevealed(true);
+                        })
+                        .fromTo(timerRevealRef.current,
+                          { opacity: 0, scale: 0.96 },
+                          { opacity: 1, scale: 1, duration: 0.6, ease: "back.out(1.1)" },
+                          "-=0.3"
+                        );
+                      }
+                    });
+                  }
+                });
+
+                missionLockTl.fromTo(textRef.current,
+                  { opacity: 0, y: 5 },
+                  { opacity: 1, y: 0, duration: 0.35, ease: "power2.out" }
+                )
+                .delay(0.8);
+              }
+            });
+          }
+        });
+
+        messages.forEach((msg, idx) => {
+          fullTl.call(() => setRitualText(msg))
+            .fromTo(textRef.current,
+              { opacity: 0, filter: "blur(6px)", y: 8 },
+              { opacity: 1, filter: "blur(0px)", y: 0, duration: 0.22, ease: "power2.out" }
+            )
+            .to(textRef.current,
+              { opacity: 0, filter: "blur(6px)", y: -8, duration: 0.2, ease: "power2.in", delay: 0.16 }
+            );
+
+          if (idx === 4) {
+            fullTl.call(() => audioSynthesizer.playRitualChime(), undefined, "-=0.2")
+              .to(textRef.current, { delay: 0.7 });
+          }
+        });
+      } else {
+        setRitualText("Loading Focus Environment...");
+        
+        gsap.killTweensOf(swordLightRef.current);
+        gsap.fromTo(swordLightRef.current,
+          { left: "0%", opacity: 0 },
+          { left: "100%", opacity: 1, duration: 2.2, repeat: -1, ease: "power1.inOut" }
+        );
+
+        const messages = [
+          "Loading Focus Environment...",
+          "Closing Outside World...",
+          "Silencing Distractions...",
+          "Clearing Mental Noise...",
+          "Locking Current Mission...",
+          "Preparing Deep Work...",
+          "Entering Flow State...",
+          "Deep Focus Activated"
+        ];
+
+        const fullTl = gsap.timeline({
+          onComplete: () => {
+            gsap.to(textRef.current, {
+              opacity: 0,
+              duration: 0.3,
+              onComplete: () => {
+                setRitualText("MISSION LOCKED");
+                
+                const missionLockTl = gsap.timeline({
+                  onComplete: () => {
+                    gsap.to(textRef.current, {
+                      opacity: 0,
+                      duration: 0.4,
+                      onComplete: () => {
+                        const revealTl = gsap.timeline({
+                          onComplete: () => {
+                            setIsIntroCompleted(true);
+                            setIsEntering(false);
+                          }
+                        });
+
+                        setIsMissionRevealed(true);
+                        revealTl.fromTo(missionRef.current,
+                          { opacity: 0, y: 12 },
+                          { opacity: 1, y: 0, duration: 0.6, ease: "power2.out" }
+                        )
+                        .delay(1.0)
+                        .to(swordImgRef.current, {
+                          opacity: 0,
+                          duration: 0.7,
+                          ease: "power2.inOut"
+                        })
+                        .call(() => {
+                          setIsTimerRevealed(true);
+                        })
+                        .fromTo(timerRevealRef.current,
+                          { opacity: 0, scale: 0.96 },
+                          { opacity: 1, scale: 1, duration: 0.6, ease: "back.out(1.1)" },
+                          "-=0.3"
+                        );
+                      }
+                    });
+                  }
+                });
+
+                missionLockTl.fromTo(textRef.current,
+                  { opacity: 0, y: 5 },
+                  { opacity: 1, y: 0, duration: 0.35, ease: "power2.out" }
+                )
+                .delay(0.8);
+              }
+            });
+          }
+        });
+
+        messages.forEach((msg, idx) => {
+          fullTl.call(() => setRitualText(msg))
+            .fromTo(textRef.current,
+              { opacity: 0, filter: "blur(6px)", y: 8 },
+              { opacity: 1, filter: "blur(0px)", y: 0, duration: 0.22, ease: "power2.out" }
+            )
+            .to(textRef.current,
+              { opacity: 0, filter: "blur(6px)", y: -8, duration: 0.2, ease: "power2.in", delay: 0.16 }
+            );
+
+          if (idx === 7) {
+            fullTl.call(() => audioSynthesizer.playRitualChime(), undefined, "-=0.2")
+              .to(textRef.current, { delay: 0.7 });
+          }
+        });
+      }
+    });
+  }, [isFullFocusActive, isEntering, isIntroCompleted, isLockInActive]);
 
   // Flow Entry Cinematic Ritual sequence
   const enterFlowStateRitual = useCallback((onCompleteRitual: () => void) => {
@@ -1277,145 +1518,6 @@ export default function FocusTimer() {
             endedAt: new Date().toISOString()
           })
         }).catch(err => console.error("Initial anti-procrastination save error:", err));
-
-        // Check skip logic (10-minute check)
-        const lastExitTime = localStorage.getItem("pd_last_focus_exit_time");
-        const exitDiff = lastExitTime ? Date.now() - parseInt(lastExitTime, 10) : Infinity;
-        const useShortIntro = exitDiff < 10 * 60 * 1000;
-
-        // Check prefers-reduced-motion
-        const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-
-        if (prefersReducedMotion) {
-          setIsIntroCompleted(true);
-          setIsMissionRevealed(true);
-          setIsTimerRevealed(true);
-          setIsEntering(false);
-        } else if (useShortIntro) {
-          setRitualText("Entering Deep Focus...");
-          
-          const shortTl = gsap.timeline({
-            onComplete: () => {
-              setIsIntroCompleted(true);
-              setIsEntering(false);
-            }
-          });
-
-          shortTl.fromTo(textRef.current,
-            { opacity: 0, y: 5 },
-            { opacity: 1, y: 0, duration: 0.2, ease: "power2.out" }
-          )
-          .to(textRef.current,
-            { opacity: 0, y: -5, duration: 0.15, ease: "power2.in", delay: 0.25 }
-          )
-          .call(() => {
-            setIsMissionRevealed(true);
-          })
-          .fromTo(missionRef.current,
-            { opacity: 0 },
-            { opacity: 1, duration: 0.15 }
-          )
-          .delay(0.05)
-          .call(() => {
-            setIsTimerRevealed(true);
-          })
-          .fromTo(timerRevealRef.current,
-            { opacity: 0 },
-            { opacity: 1, duration: 0.15 }
-          );
-
-        } else {
-          setRitualText("Loading Focus Environment...");
-          
-          gsap.killTweensOf(swordLightRef.current);
-          gsap.fromTo(swordLightRef.current,
-            { left: "0%", opacity: 0 },
-            { left: "100%", opacity: 1, duration: 2.2, repeat: -1, ease: "power1.inOut" }
-          );
-
-          const messages = [
-            "Loading Focus Environment...",
-            "Closing Outside World...",
-            "Silencing Distractions...",
-            "Clearing Mental Noise...",
-            "Locking Current Mission...",
-            "Preparing Deep Work...",
-            "Entering Flow State...",
-            "Deep Focus Activated"
-          ];
-
-          const fullTl = gsap.timeline({
-            onComplete: () => {
-              gsap.to(textRef.current, {
-                opacity: 0,
-                duration: 0.3,
-                onComplete: () => {
-                  setRitualText("MISSION LOCKED");
-                  
-                  const missionLockTl = gsap.timeline({
-                    onComplete: () => {
-                      gsap.to(textRef.current, {
-                        opacity: 0,
-                        duration: 0.4,
-                        onComplete: () => {
-                          const revealTl = gsap.timeline({
-                            onComplete: () => {
-                              setIsIntroCompleted(true);
-                              setIsEntering(false);
-                            }
-                          });
-
-                          setIsMissionRevealed(true);
-                          revealTl.fromTo(missionRef.current,
-                            { opacity: 0, y: 12 },
-                            { opacity: 1, y: 0, duration: 0.6, ease: "power2.out" }
-                          )
-                          .delay(1.0)
-                          .to(swordImgRef.current, {
-                            opacity: 0,
-                            duration: 0.7,
-                            ease: "power2.inOut"
-                          })
-                          .call(() => {
-                            setIsTimerRevealed(true);
-                          })
-                          .fromTo(timerRevealRef.current,
-                            { opacity: 0, scale: 0.96 },
-                            { opacity: 1, scale: 1, duration: 0.6, ease: "back.out(1.1)" },
-                            "-=0.3"
-                          );
-                        }
-                      });
-                    }
-                  });
-
-                  missionLockTl.fromTo(textRef.current,
-                    { opacity: 0, y: 5 },
-                    { opacity: 1, y: 0, duration: 0.35, ease: "power2.out" }
-                  )
-                  .delay(0.8);
-                }
-              });
-            }
-          });
-
-          // Message cycles
-          messages.forEach((msg, idx) => {
-            fullTl.call(() => setRitualText(msg))
-              .fromTo(textRef.current,
-                { opacity: 0, filter: "blur(6px)", y: 8 },
-                { opacity: 1, filter: "blur(0px)", y: 0, duration: 0.22, ease: "power2.out" }
-              )
-              .to(textRef.current,
-                { opacity: 0, filter: "blur(6px)", y: -8, duration: 0.2, ease: "power2.in", delay: 0.16 }
-              );
-
-            if (idx === 7) {
-              fullTl.call(() => audioSynthesizer.playRitualChime(), undefined, "-=0.2")
-                .to(textRef.current, { delay: 0.7 });
-            }
-          });
-        }
       }
     } catch (err) {
       console.error("Failed to enter fullscreen:", err);
@@ -1890,93 +1992,6 @@ export default function FocusTimer() {
         if (selectedSound) {
           audioSynthesizer.fadeAmbientIn(selectedSound, volumeRef.current, 4.0);
         }
-
-        setRitualText("Loading Focus Environment...");
-        
-        gsap.killTweensOf(swordLightRef.current);
-        gsap.fromTo(swordLightRef.current,
-          { left: "0%", opacity: 0 },
-          { left: "100%", opacity: 1, duration: 2.2, repeat: -1, ease: "power1.inOut" }
-        );
-
-        const messages = [
-          "Loading Focus Environment...",
-          "Locking Workspace Components...",
-          "Activating Anti-Procrastination Shields...",
-          "Deep Work Protocols Active...",
-          "Locked In Active"
-        ];
-
-        const fullTl = gsap.timeline({
-          onComplete: () => {
-            gsap.to(textRef.current, {
-              opacity: 0,
-              duration: 0.3,
-              onComplete: () => {
-                setRitualText("MISSION LOCKED");
-                
-                const missionLockTl = gsap.timeline({
-                  onComplete: () => {
-                    gsap.to(textRef.current, {
-                      opacity: 0,
-                      duration: 0.4,
-                      onComplete: () => {
-                        const revealTl = gsap.timeline({
-                          onComplete: () => {
-                            setIsIntroCompleted(true);
-                            setIsEntering(false);
-                          }
-                        });
-
-                        setIsMissionRevealed(true);
-                        revealTl.fromTo(missionRef.current,
-                          { opacity: 0, y: 12 },
-                          { opacity: 1, y: 0, duration: 0.6, ease: "power2.out" }
-                        )
-                        .delay(1.0)
-                        .to(swordImgRef.current, {
-                          opacity: 0,
-                          duration: 0.7,
-                          ease: "power2.inOut"
-                        })
-                        .call(() => {
-                          setIsTimerRevealed(true);
-                        })
-                        .fromTo(timerRevealRef.current,
-                          { opacity: 0, scale: 0.96 },
-                          { opacity: 1, scale: 1, duration: 0.6, ease: "back.out(1.1)" },
-                          "-=0.3"
-                        );
-                      }
-                    });
-                  }
-                });
-
-                missionLockTl.fromTo(textRef.current,
-                  { opacity: 0, y: 5 },
-                  { opacity: 1, y: 0, duration: 0.35, ease: "power2.out" }
-                )
-                .delay(0.8);
-              }
-            });
-          }
-        });
-
-        messages.forEach((msg, idx) => {
-          fullTl.call(() => setRitualText(msg))
-            .fromTo(textRef.current,
-              { opacity: 0, filter: "blur(6px)", y: 8 },
-              { opacity: 1, filter: "blur(0px)", y: 0, duration: 0.22, ease: "power2.out" }
-            )
-            .to(textRef.current,
-              { opacity: 0, filter: "blur(6px)", y: -8, duration: 0.2, ease: "power2.in", delay: 0.16 }
-            );
-
-          if (idx === 4) {
-            fullTl.call(() => audioSynthesizer.playRitualChime(), undefined, "-=0.2")
-              .to(textRef.current, { delay: 0.7 });
-          }
-        });
       }
     } catch (e) {
       console.error("Failed to enter fullscreen on begin lock-in:", e);
@@ -2072,6 +2087,14 @@ export default function FocusTimer() {
 
     saveAntiProcrastinationState("interrupted");
   };
+
+  if (!isStateInitialized) {
+    return (
+      <div className="w-full h-48 bg-card border border-border rounded flex items-center justify-center">
+        <div className="w-4 h-4 border border-white/20 border-t-white rounded-full animate-spin" />
+      </div>
+    );
+  }
 
   return (
     <div ref={fullscreenContainerRef} className="w-full h-full relative">
