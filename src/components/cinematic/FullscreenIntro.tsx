@@ -5,10 +5,13 @@ import React, { useEffect, useState } from "react";
 interface FullscreenIntroProps {
   onClose?: () => void;
   onComplete?: () => void;
+  messages?: string[];
 }
 
-export default function FullscreenIntro({ onClose, onComplete }: FullscreenIntroProps) {
-  const [message, setMessage] = useState("Loading Focus Environment...");
+export default function FullscreenIntro({ onClose, onComplete, messages }: FullscreenIntroProps) {
+  const [message, setMessage] = useState(
+    messages && messages.length > 0 ? messages[0] : "Loading Focus Environment..."
+  );
   const [opacity, setOpacity] = useState(1);
 
   const onCompleteRef = React.useRef(onComplete);
@@ -16,37 +19,38 @@ export default function FullscreenIntro({ onClose, onComplete }: FullscreenIntro
     onCompleteRef.current = onComplete;
   }, [onComplete]);
 
+  const messagesRef = React.useRef(messages);
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
+
   useEffect(() => {
     let isMounted = true;
 
     const runSequence = async () => {
-      // 1. Loading Focus Environment... (show for 600ms)
-      await new Promise((r) => setTimeout(r, 600));
-      if (!isMounted) return;
+      const msgList = messagesRef.current || [
+        "Loading Focus Environment...",
+        "Closing Outside World...",
+        "Entering Flow State..."
+      ];
 
-      // Transition to next message
-      setOpacity(0);
-      await new Promise((r) => setTimeout(r, 200));
-      if (!isMounted) return;
-      setMessage("Closing Outside World...");
-      setOpacity(1);
+      for (let i = 0; i < msgList.length; i++) {
+        if (!isMounted) return;
+        setMessage(msgList[i]);
+        setOpacity(1);
 
-      // 2. Closing Outside World... (show for 600ms)
-      await new Promise((r) => setTimeout(r, 600));
-      if (!isMounted) return;
+        // Show message for 600ms
+        await new Promise((r) => setTimeout(r, 600));
+        if (!isMounted) return;
 
-      // Transition to next message
-      setOpacity(0);
-      await new Promise((r) => setTimeout(r, 200));
-      if (!isMounted) return;
-      setMessage("Entering Flow State...");
-      setOpacity(1);
+        // Fade out transition (only if there are more messages)
+        if (i < msgList.length - 1) {
+          setOpacity(0);
+          await new Promise((r) => setTimeout(r, 200));
+        }
+      }
 
-      // 3. Entering Flow State... (show for 600ms)
-      await new Promise((r) => setTimeout(r, 600));
-      if (!isMounted) return;
-
-      // Fade out
+      // Final fade out
       setOpacity(0);
       
       // Wait approximately 500ms after the last message transitions out

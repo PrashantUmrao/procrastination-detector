@@ -145,6 +145,7 @@ export default function FocusTimer() {
   const [selectedLockDuration, setSelectedLockDuration] = useState(30);
   const [isLockInActive, setIsLockInActive] = useState(false);
   const [showWelcomeBack, setShowWelcomeBack] = useState(false);
+  const [showEmergencyInterruptedModal, setShowEmergencyInterruptedModal] = useState(false);
   const [fullscreenExits, setFullscreenExits] = useState(0);
   const [tabSwitches, setTabSwitches] = useState(0);
   const [interruptionEvents, setInterruptionEvents] = useState<IInterruptionEvent[]>([]);
@@ -751,9 +752,10 @@ export default function FocusTimer() {
 
   // Distraction and Return Detection Event Listeners
   useEffect(() => {
-    if (!isFullFocusActive || !isIntroCompleted || isCompletionActive) return;
+    if (!isFullFocusActive || isCompletionActive) return;
 
     const handleVisibilityChange = () => {
+      if (!isIntroCompleted) return;
       if (document.visibilityState === "hidden") {
         recordInterruption("visibility-hidden");
       } else if (document.visibilityState === "visible") {
@@ -762,16 +764,22 @@ export default function FocusTimer() {
     };
 
     const handleWindowBlur = () => {
+      if (!isIntroCompleted) return;
       recordInterruption("window-blur");
     };
 
     const handleWindowFocus = () => {
+      if (!isIntroCompleted) return;
       handleReturn();
     };
 
     const handleFullscreenChange = () => {
+      if (!isIntroCompleted) return;
       const isCurrentlyFullscreen = document.fullscreenElement === fullscreenContainerRef.current;
       if (!isCurrentlyFullscreen) {
+        if (isLockInActive) {
+          setShowEmergencyInterruptedModal(true);
+        }
         recordInterruption("fullscreen-exit");
       } else {
         handleReturn();
@@ -795,7 +803,7 @@ export default function FocusTimer() {
       document.removeEventListener("mozfullscreenchange", handleFullscreenChange);
       document.removeEventListener("MSFullscreenChange", handleFullscreenChange);
     };
-  }, [isFullFocusActive, isIntroCompleted, isCompletionActive, recordInterruption, handleReturn]);
+  }, [isFullFocusActive, isIntroCompleted, isCompletionActive, isLockInActive, recordInterruption, handleReturn]);
 
   const handleIntroComplete = useCallback(() => {
     setFocusOverlayState("active");
@@ -1099,7 +1107,7 @@ export default function FocusTimer() {
     }
   }, [mission, isRunning, isFullFocusActive, selectedSound, mode, sessionDuration, timeLeft, interruptionTimeline, saveAntiProcrastinationState]);
 
-  const stopTimer = () => {
+  const stopTimer = useCallback(() => {
     setIsRunning(false);
     if (isFullFocusActive) {
       audioSynthesizer.fadeAmbientOut(1.0);
@@ -1156,7 +1164,54 @@ export default function FocusTimer() {
     setDistractions(0);
     setPauseCount(0);
     sessionStartRef.current = null;
-  };
+  }, [
+    isFullFocusActive,
+    mode,
+    timeLeft,
+    sessionDuration,
+    calculateFocusScore,
+    pauseCount,
+    distractions,
+    isFlowStateActive,
+    breakFlowState,
+    isLockInActive,
+    autoSaveLockInSession,
+    mission,
+    interruptionEvents,
+    fullscreenExits,
+    tabSwitches,
+    saveFocusSession,
+    saveAntiProcrastinationState
+  ]);
+
+  const handleContinueLock = useCallback(async () => {
+    setShowEmergencyInterruptedModal(false);
+    try {
+      const container = fullscreenContainerRef.current as FullscreenElement;
+      if (container && !document.fullscreenElement) {
+        if (container.requestFullscreen) {
+          await container.requestFullscreen();
+        } else if (container.webkitRequestFullscreen) {
+          await container.webkitRequestFullscreen();
+        } else if (container.mozRequestFullScreen) {
+          await container.mozRequestFullScreen();
+        } else if (container.msRequestFullscreen) {
+          await container.msRequestFullscreen();
+        }
+      }
+    } catch (e) {
+      console.error("Failed to re-enter fullscreen on lock continue:", e);
+    }
+  }, []);
+
+  const handleEndLockSession = useCallback(() => {
+    setShowEmergencyInterruptedModal(false);
+    stopTimer();
+  }, [stopTimer]);
+
+  const handleMissionComplete = useCallback(() => {
+    handleTimerComplete();
+  }, [handleTimerComplete]);
 
   const resetTimer = useCallback(() => {
     setIsRunning(false);
@@ -1352,11 +1407,15 @@ export default function FocusTimer() {
     const handleFullscreenChange = () => {
       const isCurrentlyFullscreen = document.fullscreenElement === fullscreenContainerRef.current;
       if (!isCurrentlyFullscreen && isFullFocusActive) {
-        setFocusOverlayState("inactive");
-        if (isFlowStateActive) {
-          breakFlowState();
+        if (isLockInActive) {
+          setShowEmergencyInterruptedModal(true);
+        } else {
+          setFocusOverlayState("inactive");
+          if (isFlowStateActive) {
+            breakFlowState();
+          }
+          localStorage.setItem("pd_last_focus_exit_time", Date.now().toString());
         }
-        localStorage.setItem("pd_last_focus_exit_time", Date.now().toString());
       }
     };
 
@@ -1371,7 +1430,7 @@ export default function FocusTimer() {
       document.removeEventListener("mozfullscreenchange", handleFullscreenChange);
       document.removeEventListener("MSFullscreenChange", handleFullscreenChange);
     };
-  }, [isFullFocusActive, isFlowStateActive, breakFlowState]);
+  }, [isFullFocusActive, isFlowStateActive, breakFlowState, isLockInActive]);
 
   // Prevent scroll when in Full Focus
   useEffect(() => {
@@ -2033,180 +2092,47 @@ export default function FocusTimer() {
 
       {/* 2. FULL FOCUS MODE OVERLAY VIEW */}
       {isFullFocusActive && (
-        <div className={`fixed inset-0 w-screen h-screen bg-black z-50 flex flex-col items-center justify-center select-none overflow-hidden font-inter transition-all duration-1000 ${
-          isFlowStateActive ? "border-t border-sky-400/20" : isLockInActive ? "border-t border-red-500/20" : ""
-        }`}>
-          {/* Subtle slow breathing background gradient */}
-          <div className={`absolute inset-0 transition-opacity duration-1000 ${
-            isFlowStateActive 
-              ? "bg-[radial-gradient(circle_at_center,rgba(8,47,73,0.3)_0%,#000000_100%)]" 
-              : isLockInActive
-              ? "bg-[radial-gradient(circle_at_center,rgba(69,10,10,0.25)_0%,#000000_100%)]"
-              : "bg-[radial-gradient(circle_at_center,rgba(15,15,15,0.85)_0%,#000000_100%)]"
-          }`} />
-
-          {/* Slow drifting fog elements */}
-          <div className="absolute inset-0 overflow-hidden pointer-events-none opacity-30">
-            <div className="absolute top-1/4 left-1/4 w-[400px] h-[400px] rounded-full bg-white/[0.015] blur-[100px] animate-pulse duration-[8000ms]" />
-            <div className="absolute bottom-1/4 right-1/4 w-[500px] h-[500px] rounded-full bg-white/[0.015] blur-[120px] animate-pulse duration-[12000ms]" />
-          </div>
-
-          {/* Particle canvas */}
-          <canvas ref={canvasRef} className="absolute inset-0 w-full h-full pointer-events-none z-10" />
-
+        <div className="fixed inset-0 w-screen h-screen bg-black z-50 select-none overflow-hidden font-inter transition-all duration-1000">
           {focusOverlayState === "loading" ? (
             <FullscreenIntro 
               onClose={exitFullFocus} 
               onComplete={handleIntroComplete} 
+              messages={isLockInActive ? [
+                "Locking Workspace...",
+                "Disabling Distractions...",
+                "Commitment Confirmed...",
+                "Emergency Lock Activated"
+              ] : undefined}
             />
           ) : (
-            // Full Focus Mode Temporary Layout
-            <div className="flex flex-col items-center justify-center w-full h-full p-12 z-20 relative bg-black text-white">
-              {/* TOP CENTER: MISSION */}
-              <div className="absolute top-12 left-1/2 -translate-x-1/2 text-center flex flex-col items-center gap-1 z-20">
-                <span className="font-orbitron uppercase text-[9px] tracking-[0.3em] text-white/30">MISSION</span>
-                <h2 className="font-orbitron uppercase text-xl sm:text-2xl tracking-[0.1em] font-extrabold text-white text-glow">
-                  {mission}
-                </h2>
-              </div>
-
-              {/* CENTER: TIMER */}
-              <div className="flex flex-col items-center justify-center flex-1 max-w-xl text-center z-20">
-                <h1 className="font-mono text-8xl sm:text-9xl md:text-[11rem] tracking-widest select-none leading-none text-white text-glow">
-                  {formatTime(timeLeft)}
-                </h1>
-              </div>
-
-              {/* RIGHT SIDE PANEL: LIVE STATISTICS */}
-              <div
-                className="absolute right-12 top-1/2 -translate-y-1/2 w-64 bg-black/40 border border-white/5 backdrop-blur-md p-6 rounded-lg flex flex-col gap-4 z-30 shadow-[0_0_25px_rgba(0,0,0,0.6)]"
-              >
-                <div className="pb-2 border-b border-white/5">
-                  <span className="font-orbitron uppercase text-[9px] tracking-widest text-white/40">
-                    Live Statistics
-                  </span>
-                </div>
-
-                <div className="flex flex-col gap-3">
-                  <div className="flex justify-between items-center text-xs">
-                    <span className="font-mono text-white/40 uppercase text-[9px] tracking-wider">Today&apos;s Focus</span>
-                    <span className="font-mono text-white font-bold">{formatTodayFocus(todayFocusMinutes)}</span>
-                  </div>
-
-                  <div className="flex justify-between items-center text-xs">
-                    <span className="font-mono text-white/40 uppercase text-[9px] tracking-wider">Completed Sessions</span>
-                    <span className="font-mono text-white font-bold">{completedSessions}</span>
-                  </div>
-
-                  <div className="flex justify-between items-center text-xs">
-                    <span className="font-mono text-white/40 uppercase text-[9px] tracking-wider">Current Streak</span>
-                    <span className="font-mono text-white font-bold">{streak} Sessions</span>
-                  </div>
-
-                  <div className="flex justify-between items-center text-xs">
-                    <span className="font-mono text-white/40 uppercase text-[9px] tracking-wider">Focus Score</span>
-                    <span className="font-mono text-white font-bold">{calculateFocusScore(true, pauseCount, distractions)}</span>
-                  </div>
-
-                  <div className="flex justify-between items-center text-xs">
-                    <span className="font-mono text-white/40 uppercase text-[9px] tracking-wider">Distractions</span>
-                    <span className={`font-mono font-bold text-xs ${distractions > 0 ? "text-red-400" : "text-white"}`}>
-                      {distractions}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* LEFT BOTTOM: AMBIENT SOUNDS */}
-              <div className="absolute bottom-12 left-12 z-30 flex flex-col gap-2 items-start w-64">
-                <span className="font-mono text-[9px] tracking-widest text-white/30 uppercase">Ambient Sound</span>
-                <div className="flex flex-wrap gap-1.5">
-                  {["rain", "forest", "cafe", "brown", "white", "fireplace"].map((sound) => (
-                    <button
-                      key={sound}
-                      onClick={() => handleSoundSelect(sound)}
-                      className={`px-2 py-1 border text-[9px] font-mono uppercase tracking-wider rounded transition-all cursor-pointer ${
-                        selectedSound === sound
-                          ? "bg-white text-black border-white font-bold"
-                          : "border-white/5 text-white/40 hover:text-white/70 hover:border-white/20"
-                      }`}
-                    >
-                      {sound === "brown" ? "Brown" : sound === "white" ? "White" : sound}
-                    </button>
-                  ))}
-                </div>
-                {selectedSound && (
-                  <div className="flex items-center gap-2 mt-1 w-full">
-                    <button
-                      onClick={toggleMute}
-                      className="text-white/40 hover:text-white shrink-0 cursor-pointer"
-                      title={isMuted ? "Unmute Ambient" : "Mute Ambient"}
-                    >
-                      <Volume2 className={`w-3.5 h-3.5 ${isMuted ? "opacity-30 line-through" : ""}`} />
-                    </button>
-                    <input
-                      type="range"
-                      min="0"
-                      max="1"
-                      step="0.05"
-                      value={isMuted ? 0 : volume}
-                      onChange={(e) => handleVolumeChange(parseFloat(e.target.value))}
-                      className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-white"
-                    />
-                  </div>
-                )}
-              </div>
-
-              {/* BOTTOM CENTER: CONTROLS */}
-              <div className="absolute bottom-12 left-1/2 -translate-x-1/2 z-30 flex items-center gap-4">
-                <button
-                  onClick={toggleTimer}
-                  className="w-12 h-12 flex items-center justify-center rounded-full bg-white hover:bg-neutral-200 text-black shadow-[0_0_15px_rgba(255,255,255,0.15)] transition-all active:scale-95 cursor-pointer"
-                  title={isRunning ? "Pause" : "Resume"}
-                >
-                  {isRunning ? (
-                    <Pause className="w-5 h-5 fill-black" />
-                  ) : (
-                    <Play className="w-5 h-5 fill-black ml-0.5" />
-                  )}
-                </button>
-
-                <button
-                  onClick={resetTimer}
-                  className="p-2.5 border border-white/5 hover:border-white/20 text-white/40 hover:text-white transition-all rounded-full cursor-pointer"
-                  title="Reset Timer"
-                >
-                  <RotateCcw className="w-4 h-4" />
-                </button>
-
-                <button
-                  onClick={stopTimer}
-                  className="p-2.5 border border-white/5 hover:border-white/20 text-white/40 hover:text-white transition-all rounded-full cursor-pointer"
-                  title="End Session"
-                >
-                  <Square className="w-4 h-4 fill-current" />
-                </button>
-
-                {mode === "break" && (
-                  <button
-                    onClick={skipBreak}
-                    className="px-3 py-1.5 border border-white/10 text-white font-orbitron uppercase text-[9px] tracking-widest hover:bg-white hover:text-black transition-all rounded cursor-pointer"
-                  >
-                    Skip Break
-                  </button>
-                )}
-              </div>
-
-              {/* RIGHT BOTTOM: EXIT BUTTON */}
-              <div className="absolute bottom-12 right-12 z-30">
-                <button
-                  onClick={exitFullFocus}
-                  className="px-4 py-2 border border-white/10 text-white font-orbitron uppercase text-[9px] tracking-widest hover:bg-white hover:text-black hover:border-white transition-all duration-300 flex items-center gap-2 cursor-pointer"
-                >
-                  <X className="w-3.5 h-3.5" /> Exit Focus Mode
-                </button>
-              </div>
-            </div>
+            <FullscreenOverlay
+              variant={isLockInActive ? "lock" : "focus"}
+              mission={mission}
+              timeLeft={timeLeft}
+              sessionDuration={sessionDuration}
+              isRunning={isRunning}
+              distractions={distractions}
+              pauseCount={pauseCount}
+              selectedSound={selectedSound}
+              volume={volume}
+              isMuted={isMuted}
+              streak={streak}
+              todayFocusMinutes={todayFocusMinutes}
+              completedSessions={completedSessions}
+              progress={progress}
+              isFlowStateActive={isFlowStateActive}
+              canvasRef={canvasRef}
+              onToggleTimer={toggleTimer}
+              onResetTimer={resetTimer}
+              onStopTimer={stopTimer}
+              onSkipBreak={skipBreak}
+              onExit={exitFullFocus}
+              onSoundSelect={handleSoundSelect}
+              onVolumeChange={handleVolumeChange}
+              onToggleMute={toggleMute}
+              onMissionComplete={handleMissionComplete}
+              mode={mode}
+            />
           )}
         </div>
       )}
@@ -2675,6 +2601,473 @@ export default function FocusTimer() {
           </div>
         </div>
       )}
+
+      {/* 9. EMERGENCY-LOCK INTERRUPTED RECOVERY OVERLAY */}
+      {showEmergencyInterruptedModal && (
+        <div className="fixed inset-0 w-screen h-screen bg-black/95 z-[150] flex flex-col items-center justify-center select-none overflow-hidden font-inter">
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(69,10,10,0.45)_0%,#000000_100%)] pointer-events-none" />
+          <div className="w-full max-w-md bg-neutral-950 border border-red-500/20 p-6 rounded-lg shadow-[0_0_50px_rgba(0,0,0,0.9)] flex flex-col items-center text-center gap-6 z-20">
+            <span className="font-orbitron uppercase text-[9px] tracking-[0.4em] text-red-500 block animate-pulse">
+              ATTENTION
+            </span>
+            <h2 className="font-orbitron uppercase text-2xl font-extrabold tracking-[0.1em] text-white text-glow">
+              Emergency Lock Interrupted
+            </h2>
+            <p className="font-inter text-xs text-white/55 max-w-xs leading-relaxed">
+              You left fullscreen mode. To preserve your commitment, please resume the lock immediately.
+            </p>
+
+            <div className="flex flex-col gap-3 w-full">
+              <button
+                onClick={handleContinueLock}
+                className="w-full py-3 bg-red-600 hover:bg-red-500 text-white font-orbitron uppercase text-[10px] tracking-widest font-extrabold shadow-[0_0_15px_rgba(239,68,68,0.2)] rounded transition-all cursor-pointer"
+              >
+                Continue Lock
+              </button>
+              <button
+                onClick={handleEndLockSession}
+                className="w-full py-2.5 border border-white/10 hover:border-red-500/20 text-white/60 hover:text-red-400 font-orbitron uppercase text-[9px] tracking-widest rounded transition-all cursor-pointer"
+              >
+                End Session
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ==========================================
+// REUSABLE HELPER SUB-COMPONENTS FOR OVERLAY
+// ==========================================
+
+interface ProgressRingProps {
+  size: number;
+  radius: number;
+  strokeWidth: number;
+  progress: number;
+  colorClass: string;
+  glowClass?: string;
+  className?: string;
+}
+
+function ProgressRing({ size, radius, strokeWidth, progress, colorClass, glowClass, className = "" }: ProgressRingProps) {
+  const center = size / 2;
+  const circumference = 2 * Math.PI * radius;
+  const strokeDashoffset = circumference - (progress / 100) * circumference;
+
+  return (
+    <svg className={`absolute inset-0 w-full h-full transform -rotate-90 ${className}`}>
+      <circle cx={center} cy={center} r={radius} className="stroke-white/5 fill-none" strokeWidth={strokeWidth - 1} />
+      <circle
+        cx={center}
+        cy={center}
+        r={radius}
+        className={`${colorClass} fill-none transition-all duration-300 ease-linear ${glowClass || ""}`}
+        strokeWidth={strokeWidth}
+        strokeDasharray={circumference}
+        strokeDashoffset={strokeDashoffset}
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+interface StatsPanelProps {
+  variant: "focus" | "lock";
+  streak: number;
+  todayFocusMinutes: number;
+  completedSessions: number;
+  distractions: number;
+  pauseCount: number;
+  sessionDuration: number;
+  timeLeft: number;
+  calculateFocusScore: (completed: boolean, pauses: number, distractions: number) => number;
+  formatTodayFocus: (mins: number) => string;
+  formatTime: (secs: number) => string;
+}
+
+function StatsPanel({
+  variant,
+  streak,
+  todayFocusMinutes,
+  completedSessions,
+  distractions,
+  pauseCount,
+  sessionDuration,
+  timeLeft,
+  calculateFocusScore,
+  formatTodayFocus,
+  formatTime
+}: StatsPanelProps) {
+  const borderClass = variant === "lock" ? "border-red-500/10" : "border-white/5";
+  const titleClass = variant === "lock" ? "text-red-400 font-extrabold" : "text-white/40";
+  const titleText = variant === "lock" ? "LOCK METRICS" : "Live Statistics";
+
+  return (
+    <div className={`absolute right-12 top-1/2 -translate-y-1/2 w-64 bg-black/40 border backdrop-blur-md p-6 rounded-lg flex flex-col gap-4 z-30 shadow-[0_0_25px_rgba(0,0,0,0.6)] ${borderClass}`}>
+      <div className={`pb-2 border-b ${borderClass}`}>
+        <span className={`font-orbitron uppercase text-[9px] tracking-widest ${titleClass}`}>
+          {titleText}
+        </span>
+      </div>
+
+      <div className="flex flex-col gap-3">
+        {variant === "lock" ? (
+          <>
+            <div className="flex justify-between items-center text-xs">
+              <span className="font-mono text-white/40 uppercase text-[9px] tracking-wider">Lock Duration</span>
+              <span className="font-mono text-white font-bold">{Math.round(sessionDuration / 60)} Minutes</span>
+            </div>
+
+            <div className="flex justify-between items-center text-xs">
+              <span className="font-mono text-white/40 uppercase text-[9px] tracking-wider">Time Remaining</span>
+              <span className="font-mono text-white font-bold">{formatTime(timeLeft)}</span>
+            </div>
+
+            <div className="flex justify-between items-center text-xs">
+              <span className="font-mono text-white/40 uppercase text-[9px] tracking-wider">Distractions</span>
+              <span className={`font-mono font-bold ${distractions > 0 ? "text-red-500 animate-pulse" : "text-white"}`}>{distractions}</span>
+            </div>
+
+            <div className="flex justify-between items-center text-xs">
+              <span className="font-mono text-white/40 uppercase text-[9px] tracking-wider">Commitment Status</span>
+              <span className="font-mono text-red-500 font-bold tracking-wider animate-pulse">LOCKED IN</span>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="flex justify-between items-center text-xs">
+              <span className="font-mono text-white/40 uppercase text-[9px] tracking-wider">Today&apos;s Focus</span>
+              <span className="font-mono text-white font-bold">{formatTodayFocus(todayFocusMinutes)}</span>
+            </div>
+
+            <div className="flex justify-between items-center text-xs">
+              <span className="font-mono text-white/40 uppercase text-[9px] tracking-wider">Completed Sessions</span>
+              <span className="font-mono text-white font-bold">{completedSessions}</span>
+            </div>
+
+            <div className="flex justify-between items-center text-xs">
+              <span className="font-mono text-white/40 uppercase text-[9px] tracking-wider">Current Streak</span>
+              <span className="font-mono text-white font-bold">{streak} Sessions</span>
+            </div>
+
+            <div className="flex justify-between items-center text-xs">
+              <span className="font-mono text-white/40 uppercase text-[9px] tracking-wider">Focus Score</span>
+              <span className="font-mono text-white font-bold">{calculateFocusScore(true, pauseCount, distractions)}</span>
+            </div>
+
+            <div className="flex justify-between items-center text-xs">
+              <span className="font-mono text-white/40 uppercase text-[9px] tracking-wider">Distractions</span>
+              <span className={`font-mono font-bold text-xs ${distractions > 0 ? "text-red-400" : "text-white"}`}>
+                {distractions}
+              </span>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+interface FullscreenOverlayProps {
+  variant: "focus" | "lock";
+  mission: string;
+  timeLeft: number;
+  sessionDuration: number;
+  isRunning: boolean;
+  distractions: number;
+  pauseCount: number;
+  selectedSound: string | null;
+  volume: number;
+  isMuted: boolean;
+  streak: number;
+  todayFocusMinutes: number;
+  completedSessions: number;
+  progress: number;
+  isFlowStateActive: boolean;
+  canvasRef: React.RefObject<HTMLCanvasElement | null>;
+  onToggleTimer: () => void;
+  onResetTimer: () => void;
+  onStopTimer: () => void;
+  onSkipBreak: () => void;
+  onExit: () => void;
+  onSoundSelect: (sound: string) => void;
+  onVolumeChange: (vol: number) => void;
+  onToggleMute: () => void;
+  onMissionComplete: () => void;
+  mode: "focus" | "break";
+}
+
+function FullscreenOverlay({
+  variant,
+  mission,
+  timeLeft,
+  sessionDuration,
+  isRunning,
+  distractions,
+  pauseCount,
+  selectedSound,
+  volume,
+  isMuted,
+  streak,
+  todayFocusMinutes,
+  completedSessions,
+  progress,
+  isFlowStateActive,
+  canvasRef,
+  onToggleTimer,
+  onResetTimer,
+  onStopTimer,
+  onSkipBreak,
+  onExit,
+  onSoundSelect,
+  onVolumeChange,
+  onToggleMute,
+  onMissionComplete,
+  mode
+}: FullscreenOverlayProps) {
+  const isLock = variant === "lock";
+
+  const containerBorderClass = isLock ? "border border-red-500/20 shadow-[inset_0_0_50px_rgba(239,68,68,0.05)]" : "";
+  const bgGradientClass = isLock 
+    ? "bg-[radial-gradient(circle_at_center,rgba(69,10,10,0.25)_0%,#000000_100%)]"
+    : isFlowStateActive 
+    ? "bg-[radial-gradient(circle_at_center,rgba(8,47,73,0.3)_0%,#000000_100%)]" 
+    : "bg-[radial-gradient(circle_at_center,rgba(15,15,15,0.85)_0%,#000000_100%)]";
+
+  const calculateFocusScoreLocal = (completed: boolean, pauses: number, interruptions: number): number => {
+    if (!completed) return 40;
+    let score = 100;
+    score -= pauses * 5;
+    score -= interruptions * 3;
+    return Math.max(10, Math.min(100, score));
+  };
+
+  const formatTodayFocusLocal = (minutes: number) => {
+    let totalMins = minutes;
+    if (isRunning && mode === "focus") {
+      const elapsed = Math.floor((sessionDuration - timeLeft) / 60);
+      totalMins += elapsed;
+    }
+    const hrs = Math.floor(totalMins / 60);
+    const mins = totalMins % 60;
+    return hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`;
+  };
+
+  const formatTimeLocal = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
+  };
+
+  return (
+    <div className={`fixed inset-0 w-screen h-screen bg-black z-50 flex flex-col items-center justify-center select-none overflow-hidden font-inter transition-all duration-1000 ${containerBorderClass}`}>
+      {/* Subtle slow breathing background gradient */}
+      <div className={`absolute inset-0 transition-opacity duration-1000 ${bgGradientClass}`} />
+
+      {/* Slow drifting fog elements */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none opacity-30">
+        <div className="absolute top-1/4 left-1/4 w-[400px] h-[400px] rounded-full bg-white/[0.015] blur-[100px] animate-pulse duration-[8000ms]" />
+        <div className="absolute bottom-1/4 right-1/4 w-[500px] h-[500px] rounded-full bg-white/[0.015] blur-[120px] animate-pulse duration-[12000ms]" />
+      </div>
+
+      {/* Particle canvas */}
+      <canvas ref={canvasRef} className="absolute inset-0 w-full h-full pointer-events-none z-10" />
+
+      <div className="flex flex-col items-center justify-center w-full h-full p-12 z-20 relative bg-black text-white">
+        {/* TOP CENTER: MISSION */}
+        <div className="absolute top-12 left-1/2 -translate-x-1/2 text-center flex flex-col items-center gap-1 z-20">
+          {isLock ? (
+            <>
+              <span className="font-orbitron uppercase text-[10px] tracking-[0.4em] text-red-500 font-extrabold animate-pulse">
+                EMERGENCY LOCK
+              </span>
+              <h2 className="font-orbitron uppercase text-lg sm:text-xl tracking-[0.1em] font-bold text-white/80 border border-red-500/20 px-4 py-1.5 rounded bg-red-950/10 backdrop-blur-sm mt-1">
+                {mission}
+              </h2>
+            </>
+          ) : (
+            <>
+              <span className="font-orbitron uppercase text-[9px] tracking-[0.3em] text-white/30">MISSION</span>
+              <h2 className="font-orbitron uppercase text-xl sm:text-2xl tracking-[0.1em] font-extrabold text-white text-glow">
+                {mission}
+              </h2>
+            </>
+          )}
+        </div>
+
+        {/* CENTER: TIMER */}
+        <div className="flex flex-col items-center justify-center flex-1 max-w-xl text-center z-20">
+          {isLock ? (
+            <div className="relative w-64 h-64 flex items-center justify-center">
+              <ProgressRing
+                size={256}
+                radius={100}
+                strokeWidth={3}
+                progress={progress}
+                colorClass="stroke-red-600"
+                glowClass="drop-shadow-[0_0_8px_rgba(220,38,38,0.4)]"
+              />
+              <div className="flex flex-col items-center z-10">
+                <h1 className="font-mono text-5xl tracking-widest select-none leading-none text-white text-glow">
+                  {formatTimeLocal(timeLeft)}
+                </h1>
+                <span className="font-orbitron uppercase text-[8px] tracking-[0.2em] text-red-500 mt-2 font-bold animate-pulse">
+                  LOCKED
+                </span>
+              </div>
+            </div>
+          ) : (
+            <h1 className="font-mono text-8xl sm:text-9xl md:text-[11rem] tracking-widest select-none leading-none text-white text-glow">
+              {formatTimeLocal(timeLeft)}
+            </h1>
+          )}
+        </div>
+
+        {/* RIGHT SIDE PANEL: LIVE STATISTICS */}
+        <StatsPanel
+          variant={variant}
+          streak={streak}
+          todayFocusMinutes={todayFocusMinutes}
+          completedSessions={completedSessions}
+          distractions={distractions}
+          pauseCount={pauseCount}
+          sessionDuration={sessionDuration}
+          timeLeft={timeLeft}
+          calculateFocusScore={calculateFocusScoreLocal}
+          formatTodayFocus={formatTodayFocusLocal}
+          formatTime={formatTimeLocal}
+        />
+
+        {/* LEFT BOTTOM: AMBIENT SOUNDS */}
+        <div className={`absolute bottom-12 left-12 z-30 flex flex-col gap-2 items-start w-64 ${
+          isLock ? "text-red-400" : ""
+        }`}>
+          <span className={`font-mono text-[9px] tracking-widest uppercase ${
+            isLock ? "text-red-500/60" : "text-white/30"
+          }`}>Ambient Sound</span>
+          <div className="flex flex-wrap gap-1.5">
+            {["rain", "forest", "cafe", "brown", "white", "fireplace"].map((sound) => (
+              <button
+                key={sound}
+                onClick={() => onSoundSelect(sound)}
+                className={`px-2 py-1 border text-[9px] font-mono uppercase tracking-wider rounded transition-all cursor-pointer ${
+                  selectedSound === sound
+                    ? isLock
+                      ? "bg-red-600 text-white border-red-600 font-bold"
+                      : "bg-white text-black border-white font-bold"
+                    : isLock
+                    ? "border-red-950 text-red-500/40 hover:text-red-400 hover:border-red-500/30"
+                    : "border-white/5 text-white/40 hover:text-white/70 hover:border-white/20"
+                }`}
+              >
+                {sound === "brown" ? "Brown" : sound === "white" ? "White" : sound}
+              </button>
+            ))}
+          </div>
+          {selectedSound && (
+            <div className="flex items-center gap-2 mt-1 w-full">
+              <button
+                onClick={onToggleMute}
+                className={`${isLock ? "text-red-500/60 hover:text-red-400" : "text-white/40 hover:text-white"} shrink-0 cursor-pointer`}
+                title={isMuted ? "Unmute Ambient" : "Mute Ambient"}
+              >
+                <Volume2 className={`w-3.5 h-3.5 ${isMuted ? "opacity-30 line-through" : ""}`} />
+              </button>
+              <input
+                type="range"
+                min="0"
+                max="1"
+                step="0.05"
+                value={isMuted ? 0 : volume}
+                onChange={(e) => onVolumeChange(parseFloat(e.target.value))}
+                className={`w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer ${isLock ? "accent-red-600" : "accent-white"}`}
+              />
+            </div>
+          )}
+        </div>
+
+        {/* BOTTOM CENTER: CONTROLS */}
+        <div className="absolute bottom-12 left-1/2 -translate-x-1/2 z-30 flex items-center gap-4">
+          {isLock ? (
+            <>
+              <button
+                onClick={onToggleTimer}
+                className="px-6 py-2.5 bg-white hover:bg-neutral-200 text-black font-orbitron uppercase text-[9px] tracking-widest font-extrabold shadow-[0_0_15px_rgba(255,255,255,0.15)] transition-all active:scale-95 cursor-pointer rounded flex items-center gap-2"
+              >
+                {isRunning ? (
+                  <>
+                    <Pause className="w-3.5 h-3.5 fill-black" /> Pause
+                  </>
+                ) : (
+                  <>
+                    <Play className="w-3.5 h-3.5 fill-black ml-0.5" /> Resume
+                  </>
+                )}
+              </button>
+              <button
+                onClick={onMissionComplete}
+                className="px-6 py-2.5 bg-red-600 hover:bg-red-500 text-white font-orbitron uppercase text-[9px] tracking-widest font-extrabold shadow-[0_0_15px_rgba(239,68,68,0.2)] transition-all active:scale-95 cursor-pointer rounded"
+              >
+                Mission Complete
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                onClick={onToggleTimer}
+                className="w-12 h-12 flex items-center justify-center rounded-full bg-white hover:bg-neutral-200 text-black shadow-[0_0_15px_rgba(255,255,255,0.15)] transition-all active:scale-95 cursor-pointer"
+                title={isRunning ? "Pause" : "Resume"}
+              >
+                {isRunning ? (
+                  <Pause className="w-5 h-5 fill-black" />
+                ) : (
+                  <Play className="w-5 h-5 fill-black ml-0.5" />
+                )}
+              </button>
+
+              <button
+                onClick={onResetTimer}
+                className="p-2.5 border border-white/5 hover:border-white/20 text-white/40 hover:text-white transition-all rounded-full cursor-pointer"
+                title="Reset Timer"
+              >
+                <RotateCcw className="w-4 h-4" />
+              </button>
+
+              <button
+                onClick={onStopTimer}
+                className="p-2.5 border border-white/5 hover:border-white/20 text-white/40 hover:text-white transition-all rounded-full cursor-pointer"
+                title="End Session"
+              >
+                <Square className="w-4 h-4 fill-current" />
+              </button>
+
+              {mode === "break" && (
+                <button
+                  onClick={onSkipBreak}
+                  className="px-3 py-1.5 border border-white/10 text-white font-orbitron uppercase text-[9px] tracking-widest hover:bg-white hover:text-black transition-all rounded cursor-pointer"
+                >
+                  Skip Break
+                </button>
+              )}
+            </>
+          )}
+        </div>
+
+        {/* RIGHT BOTTOM: EXIT BUTTON */}
+        <div className="absolute bottom-12 right-12 z-30">
+          {!isLock && (
+            <button
+              onClick={onExit}
+              className="px-4 py-2 border border-white/10 text-white font-orbitron uppercase text-[9px] tracking-widest hover:bg-white hover:text-black hover:border-white transition-all duration-300 flex items-center gap-2 cursor-pointer"
+            >
+              <X className="w-3.5 h-3.5" /> Exit Focus Mode
+            </button>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
