@@ -42,10 +42,14 @@ export default function DashboardPage() {
         fetchDashboardData();
       }, 0);
       window.addEventListener("focusSessionSaved", fetchDashboardData);
+      window.addEventListener("habitUpdated", fetchDashboardData);
+      window.addEventListener("taskUpdated", fetchDashboardData);
     }
     return () => {
       if (timer) clearTimeout(timer);
       window.removeEventListener("focusSessionSaved", fetchDashboardData);
+      window.removeEventListener("habitUpdated", fetchDashboardData);
+      window.removeEventListener("taskUpdated", fetchDashboardData);
     };
   }, [isSignedIn]);
 

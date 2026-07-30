@@ -7,8 +7,7 @@ interface ProductivityScoreProps {
 }
 
 export default function ProductivityScore({ score: propScore }: ProductivityScoreProps = {}) {
-  const [localScore, setLocalScore] = useState(65); // default moderate risk
-  const score = propScore !== undefined ? propScore : localScore;
+  const score = propScore !== undefined ? propScore : 0;
 
   const [animatedScore, setAnimatedScore] = useState(0);
   const [isMounted, setIsMounted] = useState(false);
@@ -53,55 +52,6 @@ export default function ProductivityScore({ score: propScore }: ProductivityScor
     const timer = setTimeout(() => setIsMounted(true), 100);
     return () => clearTimeout(timer);
   }, []);
-
-  // Sync with client-side localStorage as fallback if no prop is passed
-  useEffect(() => {
-    if (propScore !== undefined) return;
-
-    const updateScore = () => {
-      const savedHabits = localStorage.getItem("pd_habits");
-      const savedTasks = localStorage.getItem("pd_tasks");
-
-      let habitsRate = 0;
-      let tasksRate = 0;
-
-      if (savedHabits) {
-        try {
-          const habits = JSON.parse(savedHabits);
-          if (habits.length > 0) {
-            habitsRate = habits.filter((h: { completedToday: boolean }) => h.completedToday).length / habits.length;
-          }
-        } catch {
-          // ignore
-        }
-      }
-
-      if (savedTasks) {
-        try {
-          const tasks = JSON.parse(savedTasks);
-          if (tasks.length > 0) {
-            tasksRate = tasks.filter((t: { completed: boolean }) => t.completed).length / tasks.length;
-          }
-        } catch {
-          // ignore
-        }
-      }
-
-      const completionAverage = (habitsRate + tasksRate) / 2;
-      const calculatedScore = Math.max(0, Math.min(100, Math.round(100 - (completionAverage * 100))));
-      
-      setLocalScore(calculatedScore);
-    };
-
-    updateScore();
-    window.addEventListener("storage", updateScore);
-    const interval = setInterval(updateScore, 2000);
-
-    return () => {
-      window.removeEventListener("storage", updateScore);
-      clearInterval(interval);
-    };
-  }, [propScore]);
 
   // Accent mappings based on actual procrastination score
   const getRiskDetails = (val: number) => {

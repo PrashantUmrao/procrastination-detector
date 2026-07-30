@@ -99,6 +99,7 @@ export default function HabitTracker() {
 
       await fetchHabitsList();
       setIsEditing(false);
+      window.dispatchEvent(new Event("habitUpdated"));
     } catch (e) {
       console.error("Failed to save habits routine:", e);
     } finally {
@@ -133,6 +134,8 @@ export default function HabitTracker() {
 
       if (!res.ok) {
         await fetchHabitsList();
+      } else {
+        window.dispatchEvent(new Event("habitUpdated"));
       }
     } catch (e) {
       console.error("Failed to toggle completion status:", e);
@@ -163,6 +166,7 @@ export default function HabitTracker() {
         setNewHabitTime("");
         setNewHabitCategory("Personal");
         await fetchHabitsList();
+        window.dispatchEvent(new Event("habitUpdated"));
       }
     } catch (err) {
       console.error("Failed to add custom routine:", err);

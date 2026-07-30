@@ -4,6 +4,8 @@ import { dbConnect } from "@/lib/mongodb";
 import FocusSession from "@/models/FocusSession";
 import AntiProcrastinationSession from "@/models/AntiProcrastinationSession";
 import LockInSession from "@/models/LockInSession";
+import Habit from "@/models/Habit";
+import Task from "@/models/Task";
 
 // ==========================================
 // 0. Request-Scoped Memoized Fetch Helpers
@@ -30,6 +32,40 @@ export const fetchRawLockInSessions = cache(async function fetchRawLockInSession
   return LockInSession.find({ userId }).sort({ startedAt: -1 }).lean();
 });
 
+export const fetchRawHabits = cache(async function fetchRawHabits(userId: string) {
+  await dbConnect();
+  let habits = await Habit.find({ userId }).sort({ displayOrder: 1 }).lean();
+  if (habits.length === 0) {
+    const DEFAULT_HABITS_TEMPLATE = [
+      { title: "Wake Before 6:00 AM", time: "6:00 AM", category: "Morning", displayOrder: 0, isDefault: true, completedToday: false, streak: 0, maxStreak: 0 },
+      { title: "Plan Your Day Before Starting", time: "", category: "Work", displayOrder: 1, isDefault: true, completedToday: false, streak: 0, maxStreak: 0 },
+      { title: "Complete Three Focus Duels", time: "", category: "Work", displayOrder: 2, isDefault: true, completedToday: false, streak: 0, maxStreak: 0 },
+      { title: "Review Today's Progress", time: "8:30 PM", category: "Personal", displayOrder: 3, isDefault: true, completedToday: false, streak: 0, maxStreak: 0 },
+    ];
+    const recordsToInsert = DEFAULT_HABITS_TEMPLATE.map((h) => ({ ...h, userId }));
+    await Habit.insertMany(recordsToInsert);
+    habits = await Habit.find({ userId }).sort({ displayOrder: 1 }).lean();
+  }
+  return habits;
+});
+
+export const fetchRawTasks = cache(async function fetchRawTasks(userId: string) {
+  await dbConnect();
+  let tasks = await Task.find({ userId }).sort({ displayOrder: 1 }).lean();
+  if (tasks.length === 0) {
+    const DEFAULT_TASKS_TEMPLATE = [
+      { title: "Synthesize Web Audio oscillators for the sword descent", category: "DUEL", completed: true, displayOrder: 0 },
+      { title: "Overhaul app layout to support dark luxury style values", category: "SYSTEM", completed: true, displayOrder: 1 },
+      { title: "Review daily work timeline items and prune avoidances", category: "REFLECT", completed: false, displayOrder: 2 },
+      { title: "Integrate the Recharts components inside workspace", category: "BATTLE", completed: false, displayOrder: 3 },
+    ];
+    const recordsToInsert = DEFAULT_TASKS_TEMPLATE.map((t) => ({ ...t, userId }));
+    await Task.insertMany(recordsToInsert);
+    tasks = await Task.find({ userId }).sort({ displayOrder: 1 }).lean();
+  }
+  return tasks;
+});
+
 // ==========================================
 // 1. Procrastination Score
 // ==========================================
@@ -38,62 +74,30 @@ export const getProcrastinationScore = cache(async function getProcrastinationSc
   cacheLife({ revalidate: 600 });
   cacheTag(`analytics-${userId}`);
 
-  const rawSessions = await fetchRawAntiProcrastinationSessions(userId);
-  const sevenDaysAgo = new Date();
-  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+  const [habits, tasks] = await Promise.all([
+    fetchRawHabits(userId),
+    fetchRawTasks(userId),
+  ]);
 
-  const sessions = rawSessions.filter(
-    (s) => new Date(s.startedAt) >= sevenDaysAgo
-  );
-
-  if (sessions.length === 0) return 100;
-
-  // Days mapping
-  let totalCompleted = 0;
-  let totalInterrupted = 0;
-  let totalDistractions = 0;
-  let totalExits = 0;
-  let totalSwitches = 0;
-  let totalBlurs = 0;
-  let returnCount = 0;
-
-  sessions.forEach((s) => {
-    if (s.sessionStatus === "completed") {
-      totalCompleted++;
-    } else if (s.sessionStatus === "interrupted") {
-      totalInterrupted++;
-    }
-
-    totalDistractions += s.distractionCount;
-    totalExits += s.fullscreenExits;
-    totalSwitches += s.tabSwitches;
-    totalBlurs += s.windowBlurEvents;
-
-    s.interruptionTimeline.forEach((t) => {
-      if (t.event === "Returned") {
-        returnCount++;
-      }
-    });
-  });
-
-  // Compute Anti-Procrastination Score
-  let score = 75;
-  const totalSessions = totalCompleted + totalInterrupted;
-  if (totalSessions > 0) {
-    const completionRatio = totalCompleted / totalSessions;
-    score += Math.round(completionRatio * 15);
+  if (habits.length === 0 && tasks.length === 0) {
+    return 0;
   }
 
-  score -= totalDistractions * 1.5;
-  score -= totalInterrupted * 5;
-
-  const interruptionsCount = totalExits + totalSwitches + totalBlurs;
-  if (interruptionsCount > 0) {
-    const returnRatio = returnCount / interruptionsCount;
-    score += Math.round(returnRatio * 10);
+  let habitsRate = 1.0;
+  if (habits.length > 0) {
+    const completed = habits.filter((h) => h.completedToday).length;
+    habitsRate = completed / habits.length;
   }
 
-  return Math.max(10, Math.min(100, Math.round(score)));
+  let tasksRate = 1.0;
+  if (tasks.length > 0) {
+    const completed = tasks.filter((t) => t.completed).length;
+    tasksRate = completed / tasks.length;
+  }
+
+  const completionAverage = (habitsRate + tasksRate) / 2;
+  const score = Math.max(0, Math.min(100, Math.round(100 - (completionAverage * 100))));
+  return score;
 });
 
 // ==========================================
@@ -176,17 +180,22 @@ export const getWeeklyStatistics = cache(async function getWeeklyStatistics(user
   const sevenDaysAgo = new Date();
   sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
-  const rawFocus = await fetchRawFocusSessions(userId);
+  const [rawFocus, rawAntiProc, rawLock, habits, tasks] = await Promise.all([
+    fetchRawFocusSessions(userId),
+    fetchRawAntiProcrastinationSessions(userId),
+    fetchRawLockInSessions(userId),
+    fetchRawHabits(userId),
+    fetchRawTasks(userId),
+  ]);
+
   const focusSessions = rawFocus.filter(
     (s) => new Date(s.startedAt) >= sevenDaysAgo
   );
 
-  const rawAntiProc = await fetchRawAntiProcrastinationSessions(userId);
   const antiProcSessions = rawAntiProc.filter(
     (s) => new Date(s.startedAt) >= sevenDaysAgo
   );
 
-  const rawLock = await fetchRawLockInSessions(userId);
   const lockSessions = rawLock.filter(
     (s) => new Date(s.startedAt) >= sevenDaysAgo
   );
@@ -207,6 +216,18 @@ export const getWeeklyStatistics = cache(async function getWeeklyStatistics(user
     ? Math.round(focusSessions.reduce((acc, s) => acc + (s.focusScore || 0), 0) / focusSessions.length)
     : 0;
 
+  // Habit metrics integration
+  const habitsCompleted = habits.filter((h) => h.completedToday).length;
+  const habitsCompletionRate = habits.length > 0 ? Math.round((habitsCompleted / habits.length) * 100) : 100;
+  const avgStreak = habits.length > 0 ? habits.reduce((acc, h) => acc + h.streak, 0) / habits.length : 0;
+  const habitsConsistency = Math.round(avgStreak);
+  const disciplineScore = Math.max(0, Math.min(100, Math.round(habitsCompletionRate * 0.7 + Math.min(avgStreak * 5, 30))));
+
+  // Task metrics integration
+  const tasksCompleted = tasks.filter((t) => t.completed).length;
+  const tasksPending = tasks.filter((t) => !t.completed).length;
+  const tasksCompletionRatio = tasks.length > 0 ? Math.round((tasksCompleted / tasks.length) * 100) : 100;
+
   return {
     totalFocusTime, // in minutes
     completedFocusSessions,
@@ -216,6 +237,13 @@ export const getWeeklyStatistics = cache(async function getWeeklyStatistics(user
     averageFocusScore: avgFocusScore,
     lockSessionsCount: lockSessions.length,
     successfulLockSessionsCount: lockSessions.filter((s) => s.completed).length,
+    // Unified Combat Analytics Fields
+    habitsCompletionRate,
+    habitsConsistency,
+    disciplineScore,
+    tasksCompleted,
+    tasksPending,
+    tasksCompletionRatio,
   };
 });
 
@@ -230,17 +258,22 @@ export const getMonthlyStatistics = cache(async function getMonthlyStatistics(us
   const thirtyDaysAgo = new Date();
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-  const rawFocus = await fetchRawFocusSessions(userId);
+  const [rawFocus, rawAntiProc, rawLock, habits, tasks] = await Promise.all([
+    fetchRawFocusSessions(userId),
+    fetchRawAntiProcrastinationSessions(userId),
+    fetchRawLockInSessions(userId),
+    fetchRawHabits(userId),
+    fetchRawTasks(userId),
+  ]);
+
   const focusSessions = rawFocus.filter(
     (s) => new Date(s.startedAt) >= thirtyDaysAgo
   );
 
-  const rawAntiProc = await fetchRawAntiProcrastinationSessions(userId);
   const antiProcSessions = rawAntiProc.filter(
     (s) => new Date(s.startedAt) >= thirtyDaysAgo
   );
 
-  const rawLock = await fetchRawLockInSessions(userId);
   const lockSessions = rawLock.filter(
     (s) => new Date(s.startedAt) >= thirtyDaysAgo
   );
@@ -261,6 +294,18 @@ export const getMonthlyStatistics = cache(async function getMonthlyStatistics(us
     ? Math.round(focusSessions.reduce((acc, s) => acc + (s.focusScore || 0), 0) / focusSessions.length)
     : 0;
 
+  // Habit metrics integration
+  const habitsCompleted = habits.filter((h) => h.completedToday).length;
+  const habitsCompletionRate = habits.length > 0 ? Math.round((habitsCompleted / habits.length) * 100) : 100;
+  const avgStreak = habits.length > 0 ? habits.reduce((acc, h) => acc + h.streak, 0) / habits.length : 0;
+  const habitsConsistency = Math.round(avgStreak);
+  const disciplineScore = Math.max(0, Math.min(100, Math.round(habitsCompletionRate * 0.7 + Math.min(avgStreak * 5, 30))));
+
+  // Task metrics integration
+  const tasksCompleted = tasks.filter((t) => t.completed).length;
+  const tasksPending = tasks.filter((t) => !t.completed).length;
+  const tasksCompletionRatio = tasks.length > 0 ? Math.round((tasksCompleted / tasks.length) * 100) : 100;
+
   return {
     totalFocusTime, // in minutes
     completedFocusSessions,
@@ -270,6 +315,13 @@ export const getMonthlyStatistics = cache(async function getMonthlyStatistics(us
     averageFocusScore: avgFocusScore,
     lockSessionsCount: lockSessions.length,
     successfulLockSessionsCount: lockSessions.filter((s) => s.completed).length,
+    // Unified Combat Analytics Fields
+    habitsCompletionRate,
+    habitsConsistency,
+    disciplineScore,
+    tasksCompleted,
+    tasksPending,
+    tasksCompletionRatio,
   };
 });
 
@@ -510,12 +562,16 @@ export const getProductivityTrends = cache(async function getProductivityTrends(
   const thirtyDaysAgo = new Date();
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-  const rawFocus = await fetchRawFocusSessions(userId);
+  const [rawFocus, rawAntiProc, currentProcScore] = await Promise.all([
+    fetchRawFocusSessions(userId),
+    fetchRawAntiProcrastinationSessions(userId),
+    getProcrastinationScore(userId),
+  ]);
+
   const focusSessions = rawFocus.filter(
     (s) => new Date(s.startedAt) >= thirtyDaysAgo
   );
 
-  const rawAntiProc = await fetchRawAntiProcrastinationSessions(userId);
   const antiProcSessions = rawAntiProc.filter(
     (s) => new Date(s.startedAt) >= thirtyDaysAgo
   );
@@ -556,15 +612,22 @@ export const getProductivityTrends = cache(async function getProductivityTrends(
     }
   });
 
-  const formattedTrends = Object.keys(trends).map((date) => {
+  const currentAntiProcScore = 100 - currentProcScore;
+
+  const formattedTrends = Object.keys(trends).map((date, idx, arr) => {
     const dayData = trends[date];
     const avgFocusScore = dayData.focusScores.length > 0
       ? Math.round(dayData.focusScores.reduce((a, b) => a + b, 0) / dayData.focusScores.length)
       : 80;
 
-    const avgAntiProcScore = dayData.antiProcScores.length > 0
+    let avgAntiProcScore = dayData.antiProcScores.length > 0
       ? Math.round(dayData.antiProcScores.reduce((a, b) => a + b, 0) / dayData.antiProcScores.length)
       : 100;
+
+    // Override today's score on the trends with the actual habits+tasks score
+    if (idx === arr.length - 1) {
+      avgAntiProcScore = currentAntiProcScore;
+    }
 
     return {
       date,

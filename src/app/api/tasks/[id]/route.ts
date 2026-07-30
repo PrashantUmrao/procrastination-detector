@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
 import { dbConnect } from "@/lib/mongodb";
-import Habit from "@/models/Habit";
+import Task from "@/models/Task";
 import { getAuthUser, isDynamicError } from "@/lib/auth";
 import { revalidateTag } from "next/cache";
 
-// PATCH: Update properties of a single habit (e.g. toggle completion or edit fields)
+// PATCH: Update properties of a single task (toggle completion, edit title/category)
 export async function PATCH(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -17,48 +17,39 @@ export async function PATCH(
     }
 
     const body = await req.json();
-    const { title, time, category, completedToday } = body;
+    const { title, category, completed } = body;
 
     await dbConnect();
 
-    // Find the habit to verify ownership
-    const habit = await Habit.findOne({ _id: id, userId: user.clerkId });
-    if (!habit) {
-      return NextResponse.json({ error: "Habit not found" }, { status: 404 });
+    // Verify ownership
+    const task = await Task.findOne({ _id: id, userId: user.clerkId });
+    if (!task) {
+      return NextResponse.json({ error: "Task not found" }, { status: 404 });
     }
 
     const updateFields: any = {};
-
     if (title !== undefined) updateFields.title = title;
-    if (time !== undefined) updateFields.time = time;
     if (category !== undefined) updateFields.category = category;
+    if (completed !== undefined) updateFields.completed = completed;
 
-    if (completedToday !== undefined) {
-      updateFields.completedToday = completedToday;
-      // Increment or decrement streak based on completion state
-      const newStreak = completedToday ? habit.streak + 1 : Math.max(0, habit.streak - 1);
-      updateFields.streak = newStreak;
-      updateFields.maxStreak = Math.max(habit.maxStreak, newStreak);
-    }
-
-    const updatedHabit = await Habit.findOneAndUpdate(
+    const updatedTask = await Task.findOneAndUpdate(
       { _id: id, userId: user.clerkId },
       { $set: updateFields },
       { new: true }
     );
 
     revalidateTag(`analytics-${user.clerkId}`, { expire: 0 });
-    return NextResponse.json(updatedHabit);
+    return NextResponse.json(updatedTask);
   } catch (error) {
     if (isDynamicError(error)) {
       throw error;
     }
-    console.error("Failed to update habit:", error);
+    console.error("Failed to update task:", error);
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }
 }
 
-// DELETE: Remove a habit
+// DELETE: Remove a task from timeline
 export async function DELETE(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -72,9 +63,9 @@ export async function DELETE(
 
     await dbConnect();
 
-    const result = await Habit.deleteOne({ _id: id, userId: user.clerkId });
+    const result = await Task.deleteOne({ _id: id, userId: user.clerkId });
     if (result.deletedCount === 0) {
-      return NextResponse.json({ error: "Habit not found" }, { status: 404 });
+      return NextResponse.json({ error: "Task not found" }, { status: 404 });
     }
 
     revalidateTag(`analytics-${user.clerkId}`, { expire: 0 });
@@ -83,7 +74,7 @@ export async function DELETE(
     if (isDynamicError(error)) {
       throw error;
     }
-    console.error("Failed to delete habit:", error);
+    console.error("Failed to delete task:", error);
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }
 }

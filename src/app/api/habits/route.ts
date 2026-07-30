@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { dbConnect } from "@/lib/mongodb";
 import Habit from "@/models/Habit";
 import { getAuthUser, isDynamicError } from "@/lib/auth";
+import { revalidateTag } from "next/cache";
 
 const DEFAULT_HABITS_TEMPLATE = [
   {
@@ -99,6 +100,7 @@ export async function POST(req: Request) {
       isDefault: false,
     });
 
+    revalidateTag(`analytics-${user.clerkId}`, { expire: 0 });
     return NextResponse.json(newHabit);
   } catch (error) {
     if (isDynamicError(error)) {
@@ -137,6 +139,7 @@ export async function PUT(req: Request) {
     await Promise.all(updatePromises);
 
     const updatedList = await Habit.find({ userId: user.clerkId }).sort({ displayOrder: 1 });
+    revalidateTag(`analytics-${user.clerkId}`, { expire: 0 });
     return NextResponse.json(updatedList);
   } catch (error) {
     if (isDynamicError(error)) {
