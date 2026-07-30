@@ -58,7 +58,10 @@ export default function ProductivityScore({ score: propScore }: ProductivityScor
     if (val <= 30) {
       return {
         level: "LOW RISK",
-        message: "You're maintaining excellent consistency.",
+        message: [
+          "You're maintaining excellent consistency.",
+          "Keep completing your tasks and daily habits."
+        ],
         colorClass: "text-emerald-400",
         glowClass: "shadow-[0_0_40px_rgba(16,185,129,0.08)]",
         strokeColor: "#10b981",
@@ -66,7 +69,10 @@ export default function ProductivityScore({ score: propScore }: ProductivityScor
     } else if (val <= 60) {
       return {
         level: "MODERATE RISK",
-        message: "Stay consistent. One Focus Duel will keep you on track.",
+        message: [
+          "A few tasks remain.",
+          "Stay disciplined and finish your pending work."
+        ],
         colorClass: "text-amber-400",
         glowClass: "shadow-[0_0_40px_rgba(245,158,11,0.08)]",
         strokeColor: "#f59e0b",
@@ -74,7 +80,10 @@ export default function ProductivityScore({ score: propScore }: ProductivityScor
     } else if (val <= 80) {
       return {
         level: "HIGH RISK",
-        message: "Avoidance detected. Complete one Focus Duel to regain momentum.",
+        message: [
+          "You're falling behind.",
+          "Complete pending tasks and maintain your daily habits."
+        ],
         colorClass: "text-orange-400",
         glowClass: "shadow-[0_0_40px_rgba(249,115,22,0.08)]",
         strokeColor: "#f97316",
@@ -82,7 +91,10 @@ export default function ProductivityScore({ score: propScore }: ProductivityScor
     } else {
       return {
         level: "CRITICAL RISK",
-        message: "You're losing momentum. Start a Focus Duel now.",
+        message: [
+          "You're losing momentum.",
+          "Complete your pending tasks and daily habits."
+        ],
         colorClass: "text-red-500",
         glowClass: "shadow-[0_0_40px_rgba(239,68,68,0.12)]",
         strokeColor: "#ef4444",
@@ -156,7 +168,15 @@ export default function ProductivityScore({ score: propScore }: ProductivityScor
       {/* Motivational Message (Fade In) */}
       <div className={`h-8 flex items-center justify-center transition-all duration-1000 delay-300 transform ${isMounted ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2"}`}>
         <p className="font-inter text-[11px] leading-relaxed tracking-wide text-neutral-400 max-w-[220px]">
-          {risk.message}
+          {Array.isArray(risk.message) ? (
+            <>
+              {risk.message[0]}
+              <br />
+              {risk.message[1]}
+            </>
+          ) : (
+            risk.message
+          )}
         </p>
       </div>
     </div>
