@@ -1,5 +1,5 @@
 "use client";
-
+ 
 import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Lock, ArrowLeft } from "lucide-react";
@@ -21,22 +21,17 @@ export default function DashboardPage() {
   const [isNewUser, setIsNewUser] = useState(false);
   const [greeting, setGreeting] = useState("WELCOME");
 
-  const [stats, setStats] = useState({
-    todaysFocusTime: 0,
-    completedSessions: 0,
-    focusStreak: 0,
-    distractions: 0,
-  });
+  const [dashboardData, setDashboardData] = useState<any>(null);
 
-  const fetchStats = async () => {
+  const fetchDashboardData = async () => {
     try {
-      const res = await fetch("/api/focus-sessions/stats");
+      const res = await fetch("/api/dashboard");
       if (res.ok) {
         const data = await res.json();
-        setStats(data);
+        setDashboardData(data);
       }
     } catch (err) {
-      console.error("Error fetching stats:", err);
+      console.error("Error fetching dashboard data:", err);
     }
   };
 
@@ -44,13 +39,13 @@ export default function DashboardPage() {
     let timer: NodeJS.Timeout;
     if (isSignedIn) {
       timer = setTimeout(() => {
-        fetchStats();
+        fetchDashboardData();
       }, 0);
-      window.addEventListener("focusSessionSaved", fetchStats);
+      window.addEventListener("focusSessionSaved", fetchDashboardData);
     }
     return () => {
       if (timer) clearTimeout(timer);
-      window.removeEventListener("focusSessionSaved", fetchStats);
+      window.removeEventListener("focusSessionSaved", fetchDashboardData);
     };
   }, [isSignedIn]);
 
@@ -158,6 +153,11 @@ export default function DashboardPage() {
     );
   }
 
+  const todaysFocusTime = dashboardData?.todaysFocus ?? 0;
+  const completedSessions = dashboardData?.focusStatistics?.completedSessions ?? 0;
+  const focusStreak = dashboardData?.currentStreak ?? 0;
+  const distractions = dashboardData?.focusStatistics?.distractions ?? 0;
+
   return (
     <div className="min-h-screen bg-black text-white relative flex flex-col pb-20 select-none">
       {/* Background visual detail */}
@@ -221,19 +221,19 @@ export default function DashboardPage() {
           <div className="flex flex-wrap gap-8">
             <div className="flex flex-col">
               <span className="font-mono text-[9px] tracking-widest text-white/30 uppercase">Today&apos;s Focus Time</span>
-              <span className="font-mono text-lg text-white font-bold tracking-wider">{stats.todaysFocusTime}m</span>
+              <span className="font-mono text-lg text-white font-bold tracking-wider">{todaysFocusTime}m</span>
             </div>
             <div className="flex flex-col">
               <span className="font-mono text-[9px] tracking-widest text-white/30 uppercase">Completed Sessions</span>
-              <span className="font-mono text-lg text-white font-bold tracking-wider">{stats.completedSessions}</span>
+              <span className="font-mono text-lg text-white font-bold tracking-wider">{completedSessions}</span>
             </div>
             <div className="flex flex-col">
               <span className="font-mono text-[9px] tracking-widest text-white/30 uppercase">Focus Streak</span>
-              <span className="font-mono text-lg text-white font-bold tracking-wider">{stats.focusStreak}d</span>
+              <span className="font-mono text-lg text-white font-bold tracking-wider">{focusStreak}d</span>
             </div>
             <div className="flex flex-col">
               <span className="font-mono text-[9px] tracking-widest text-white/30 uppercase">Distractions</span>
-              <span className="font-mono text-lg text-glow text-red-500 font-bold tracking-wider">{stats.distractions}</span>
+              <span className="font-mono text-lg text-glow text-red-500 font-bold tracking-wider">{distractions}</span>
             </div>
           </div>
         </section>
@@ -243,17 +243,21 @@ export default function DashboardPage() {
           
           {/* Column 1: Productivity Score */}
           <div className="h-full">
-            <ProductivityScore />
+            <ProductivityScore score={dashboardData?.procrastinationScore} />
           </div>
 
           {/* Column 2: Focus Timer */}
           <div className="h-full">
-            <FocusTimer />
+            <FocusTimer
+              todayFocusMinutes={todaysFocusTime}
+              completedSessions={completedSessions}
+              streak={focusStreak}
+            />
           </div>
 
           {/* Column 3: Weekly AI Report */}
           <div className="h-full">
-            <WeeklyAIReport />
+            <WeeklyAIReport insights={dashboardData?.aiInsights} onRefresh={fetchDashboardData} />
           </div>
 
           {/* Column 4: Habit Tracker */}
@@ -268,7 +272,11 @@ export default function DashboardPage() {
 
           {/* Column 6: Analytics Charts (Full width on smaller, grid fit on large) */}
           <div className="h-full md:col-span-2 lg:col-span-3">
-            <AnalyticsCharts />
+            <AnalyticsCharts
+              weeklyAnalytics={dashboardData?.weeklyAnalytics}
+              monthlyAnalytics={dashboardData?.monthlyAnalytics}
+              productivityTrends={dashboardData?.productivityTrends}
+            />
           </div>
 
         </section>

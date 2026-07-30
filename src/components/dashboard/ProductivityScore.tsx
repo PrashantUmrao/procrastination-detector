@@ -2,13 +2,62 @@
 
 import React, { useState, useEffect } from "react";
 
-export default function ProductivityScore() {
-  const [score, setScore] = useState(65); // default moderate risk
-  const [description, setDescription] = useState("");
-  const [level, setLevel] = useState<"LOW" | "MODERATE" | "CRITICAL">("MODERATE");
+interface ProductivityScoreProps {
+  score?: number;
+}
 
+export default function ProductivityScore({ score: propScore }: ProductivityScoreProps = {}) {
+  const [localScore, setLocalScore] = useState(65); // default moderate risk
+  const score = propScore !== undefined ? propScore : localScore;
+
+  const [animatedScore, setAnimatedScore] = useState(0);
+  const [isMounted, setIsMounted] = useState(false);
+
+  // Eased dynamic gauge & score text animation
   useEffect(() => {
-    // Read from localStorage to evaluate dynamic score
+    let start = 0;
+    const end = score;
+    if (end === 0) {
+      setAnimatedScore(0);
+      return;
+    }
+
+    const duration = 1200; // ms
+    const startTime = performance.now();
+    let animationFrameId: number;
+
+    const animate = (currentTime: number) => {
+      const elapsed = currentTime - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      
+      // Easing: easeOutQuad
+      const easedProgress = progress * (2 - progress);
+      const currentVal = Math.round(start + easedProgress * (end - start));
+      
+      setAnimatedScore(currentVal);
+
+      if (progress < 1) {
+        animationFrameId = requestAnimationFrame(animate);
+      }
+    };
+
+    animationFrameId = requestAnimationFrame(animate);
+
+    return () => {
+      cancelAnimationFrame(animationFrameId);
+    };
+  }, [score]);
+
+  // Set mounted state for entrance animations
+  useEffect(() => {
+    const timer = setTimeout(() => setIsMounted(true), 100);
+    return () => clearTimeout(timer);
+  }, []);
+
+  // Sync with client-side localStorage as fallback if no prop is passed
+  useEffect(() => {
+    if (propScore !== undefined) return;
+
     const updateScore = () => {
       const savedHabits = localStorage.getItem("pd_habits");
       const savedTasks = localStorage.getItem("pd_tasks");
@@ -38,92 +87,128 @@ export default function ProductivityScore() {
         }
       }
 
-      // Procrastination Score is 100 minus completion rates (so high completion = low procrastination)
       const completionAverage = (habitsRate + tasksRate) / 2;
       const calculatedScore = Math.max(0, Math.min(100, Math.round(100 - (completionAverage * 100))));
       
-      setScore(calculatedScore);
-
-      if (calculatedScore <= 30) {
-        setLevel("LOW");
-        setDescription("FLOW STATE ACTIVE. WILLPOWER DISSOLVED. CONTINUE RHYTHMIC PROGRESSION.");
-      } else if (calculatedScore <= 70) {
-        setLevel("MODERATE");
-        setDescription("FRICTION DETECTED. EGO SEEKING COMFORT. REDUCE SCOPE, DEFLECT DISTRACTIONS.");
-      } else {
-        setLevel("CRITICAL");
-        setDescription("WARNING: CRITICAL AVOIDANCE. SLOTH IN THE FORTRESS. CHOOSE ONE SMALL DUEL NOW.");
-      }
+      setLocalScore(calculatedScore);
     };
 
     updateScore();
-    // Listen for custom/local storage updates
     window.addEventListener("storage", updateScore);
-    const interval = setInterval(updateScore, 2000); // Poll for fast local state synchronization
+    const interval = setInterval(updateScore, 2000);
 
     return () => {
       window.removeEventListener("storage", updateScore);
       clearInterval(interval);
     };
-  }, []);
+  }, [propScore]);
 
-  // SVG Gauge specifications
-  const radius = 60;
-  const strokeCircumference = Math.PI * radius; // half circle or custom arc
-  const strokeOffset = strokeCircumference - (score / 100) * strokeCircumference;
+  // Accent mappings based on actual procrastination score
+  const getRiskDetails = (val: number) => {
+    if (val <= 30) {
+      return {
+        level: "LOW RISK",
+        message: "You're maintaining excellent consistency.",
+        colorClass: "text-emerald-400",
+        glowClass: "shadow-[0_0_40px_rgba(16,185,129,0.08)]",
+        strokeColor: "#10b981",
+      };
+    } else if (val <= 60) {
+      return {
+        level: "MODERATE RISK",
+        message: "Stay consistent. One Focus Duel will keep you on track.",
+        colorClass: "text-amber-400",
+        glowClass: "shadow-[0_0_40px_rgba(245,158,11,0.08)]",
+        strokeColor: "#f59e0b",
+      };
+    } else if (val <= 80) {
+      return {
+        level: "HIGH RISK",
+        message: "Avoidance detected. Complete one Focus Duel to regain momentum.",
+        colorClass: "text-orange-400",
+        glowClass: "shadow-[0_0_40px_rgba(249,115,22,0.08)]",
+        strokeColor: "#f97316",
+      };
+    } else {
+      return {
+        level: "CRITICAL RISK",
+        message: "You're losing momentum. Start a Focus Duel now.",
+        colorClass: "text-red-500",
+        glowClass: "shadow-[0_0_40px_rgba(239,68,68,0.12)]",
+        strokeColor: "#ef4444",
+      };
+    }
+  };
+
+  const risk = getRiskDetails(score);
+
+  // SVG parameters
+  const radius = 54;
+  const strokeCircumference = 2 * Math.PI * radius;
+  const strokeOffset = strokeCircumference - (animatedScore / 100) * strokeCircumference;
 
   return (
-    <div className="bg-card border border-border p-6 rounded flex flex-col items-center justify-between text-center w-full h-full relative group">
-      <div className="flex justify-between items-center w-full mb-6">
-        <h3 className="font-orbitron uppercase text-xs tracking-widest text-white/50">
+    <div className="bg-card border border-border p-8 rounded flex flex-col items-center justify-center text-center w-full h-full relative overflow-hidden group select-none">
+      {/* Dynamic breathing background glow */}
+      <div className={`absolute -inset-px rounded transition-all duration-1000 opacity-[0.03] group-hover:opacity-[0.08] ${risk.glowClass} pointer-events-none`} />
+
+      {/* Card Title Header */}
+      <div className="mb-4">
+        <span className="font-orbitron uppercase text-[9px] tracking-[0.3em] text-white/40 block">
           Procrastination Score
-        </h3>
-        <span className="font-mono text-[9px] text-white/30 tracking-widest uppercase">
-          Threat Level
         </span>
       </div>
 
-      <div className="relative w-40 h-28 flex items-center justify-center">
-        {/* Semi-circular gauge */}
-        <svg className="absolute inset-0 w-full h-full transform -rotate-180" viewBox="0 0 160 100">
-          <path
-            d="M 20,80 A 60,60 0 0,1 140,80"
-            className="stroke-white/5 fill-none"
-            strokeWidth="3"
-            strokeLinecap="round"
+      {/* Centerpiece Circular Progress Gauge */}
+      <div className="relative w-40 h-40 flex items-center justify-center">
+        <svg className="w-full h-full" viewBox="0 0 160 160">
+          {/* Subtle track circle */}
+          <circle
+            cx="80"
+            cy="80"
+            r={radius}
+            className="stroke-white/[0.03] fill-none"
+            strokeWidth="3.5"
           />
-          <path
-            d="M 20,80 A 60,60 0 0,1 140,80"
-            className="stroke-white fill-none transition-all duration-500 ease-out"
-            strokeWidth="4"
+          {/* Colored progress circle with ease-out transition */}
+          <circle
+            cx="80"
+            cy="80"
+            r={radius}
+            className="fill-none transition-all duration-300 ease-out"
+            strokeWidth="4.5"
+            stroke={risk.strokeColor}
             strokeDasharray={strokeCircumference}
             strokeDashoffset={strokeOffset}
             strokeLinecap="round"
+            transform="rotate(-90 80 80)"
           />
         </svg>
 
-        {/* Text readout */}
-        <div className="flex flex-col items-center z-10 mt-6">
-          <span className="font-mono text-4xl tracking-widest text-white text-glow">
-            {score}%
-          </span>
-          <span
-            className={`font-orbitron uppercase text-[9px] tracking-wider mt-1.5 font-bold ${
-              level === "LOW"
-                ? "text-emerald-400"
-                : level === "MODERATE"
-                ? "text-white/60"
-                : "text-red-500 text-glow animate-pulse"
-            }`}
-          >
-            {level} RISK
+        {/* Centered Score */}
+        <div className="absolute inset-0 flex flex-col items-center justify-center">
+          <span className="font-mono text-4xl font-extrabold tracking-tight text-white select-none text-glow">
+            {animatedScore}%
           </span>
         </div>
       </div>
 
-      <p className="font-inter text-[10px] leading-relaxed tracking-wider text-white/40 max-w-[220px] px-2 h-10 mt-2 flex items-center justify-center">
-        {description}
-      </p>
+      {/* Dynamic Risk Level (Fade In) */}
+      <div className={`mt-4 transition-all duration-1000 transform ${isMounted ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2"}`}>
+        <span className={`font-orbitron uppercase text-[10px] tracking-[0.25em] font-bold ${risk.colorClass} text-glow`}>
+          {risk.level}
+        </span>
+      </div>
+
+      {/* Elegant minimal line divider */}
+      <div className="w-8 h-[1px] bg-white/10 my-3" />
+
+      {/* Motivational Message (Fade In) */}
+      <div className={`h-8 flex items-center justify-center transition-all duration-1000 delay-300 transform ${isMounted ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2"}`}>
+        <p className="font-inter text-[11px] leading-relaxed tracking-wide text-neutral-400 max-w-[220px]">
+          {risk.message}
+        </p>
+      </div>
     </div>
   );
 }

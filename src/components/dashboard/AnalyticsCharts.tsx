@@ -46,7 +46,39 @@ const CustomTooltip = ({ active, payload }: CustomTooltipProps) => {
   return null;
 };
 
-export default function AnalyticsCharts() {
+interface AnalyticsChartsProps {
+  weeklyAnalytics?: {
+    totalFocusTime: number;
+    completedFocusSessions: number;
+    completedAntiProc: number;
+    interruptedAntiProc: number;
+    totalDistractions: number;
+    averageFocusScore: number;
+    lockSessionsCount: number;
+    successfulLockSessionsCount: number;
+  };
+  monthlyAnalytics?: {
+    totalFocusTime: number;
+    completedFocusSessions: number;
+    completedAntiProc: number;
+    interruptedAntiProc: number;
+    totalDistractions: number;
+    averageFocusScore: number;
+    lockSessionsCount: number;
+    successfulLockSessionsCount: number;
+  };
+  productivityTrends?: Array<{
+    date: string;
+    focusMinutes: number;
+    averageFocusScore: number;
+    antiProcrastinationScore: number;
+  }>;
+}
+
+export default function AnalyticsCharts({
+  weeklyAnalytics,
+  productivityTrends,
+}: AnalyticsChartsProps = {}) {
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
@@ -64,6 +96,28 @@ export default function AnalyticsCharts() {
     );
   }
 
+  const getDayName = (dateStr: string) => {
+    try {
+      const parts = dateStr.split("-");
+      if (parts.length === 3) {
+        const d = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+        return d.toLocaleDateString("en-US", { weekday: "short" });
+      }
+    } catch {}
+    return dateStr;
+  };
+
+  const chartData = productivityTrends && productivityTrends.length > 0
+    ? productivityTrends.slice(-7).map((item) => ({
+        day: getDayName(item.date),
+        focus: item.averageFocusScore,
+        procrast: 100 - item.antiProcrastinationScore,
+      }))
+    : MOCK_DATA;
+
+  const weeklyEfficiency = weeklyAnalytics && weeklyAnalytics.averageFocusScore !== undefined
+    ? `${weeklyAnalytics.averageFocusScore}%`
+    : "77.1%";
 
   return (
     <div className="bg-card border border-border p-6 rounded flex flex-col justify-between w-full h-full relative group">
@@ -79,7 +133,7 @@ export default function AnalyticsCharts() {
 
         <div className="w-full h-56">
           <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={MOCK_DATA} margin={{ top: 10, right: 0, left: -25, bottom: 0 }}>
+            <AreaChart data={chartData} margin={{ top: 10, right: 0, left: -25, bottom: 0 }}>
               <defs>
                 <linearGradient id="focusColor" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor="#FFFFFF" stopOpacity={0.06} />
@@ -124,7 +178,7 @@ export default function AnalyticsCharts() {
 
       <div className="mt-4 pt-4 border-t border-white/5 flex justify-between items-center text-[10px] text-white/30 font-mono tracking-wider uppercase">
         <span>Weekly Efficiency</span>
-        <span className="text-white">77.1%</span>
+        <span className="text-white">{weeklyEfficiency}</span>
       </div>
     </div>
   );

@@ -15,40 +15,53 @@ interface InsightsData {
   totalInterrupted: number;
 }
 
-export default function WeeklyAIReport() {
+interface WeeklyAIReportProps {
+  insights?: InsightsData | null;
+  onRefresh?: () => Promise<void> | void;
+}
+
+export default function WeeklyAIReport({ insights: propInsights, onRefresh }: WeeklyAIReportProps = {}) {
   const [isGenerating, setIsGenerating] = useState(false);
-  const [insights, setInsights] = useState<InsightsData | null>(null);
+  const [localInsights, setLocalInsights] = useState<InsightsData | null>(null);
+
+  const insights = propInsights !== undefined ? propInsights : localInsights;
 
   const fetchInsights = useCallback(async () => {
+    if (onRefresh) {
+      await onRefresh();
+      return;
+    }
     try {
       const res = await fetch("/api/anti-procrastination/insights");
       if (res.ok) {
         const data = await res.json();
-        setInsights(data);
+        setLocalInsights(data);
       }
     } catch (e) {
       console.error("Failed to load insights:", e);
     }
-  }, []);
+  }, [onRefresh]);
 
   useEffect(() => {
-    let active = true;
-    const load = async () => {
-      try {
-        const res = await fetch("/api/anti-procrastination/insights");
-        if (res.ok) {
-          const data = await res.json();
-          if (active) {
-            setInsights(data);
+    if (propInsights === undefined) {
+      let active = true;
+      const load = async () => {
+        try {
+          const res = await fetch("/api/anti-procrastination/insights");
+          if (res.ok) {
+            const data = await res.json();
+            if (active) {
+              setLocalInsights(data);
+            }
           }
-        }
-      } catch {}
-    };
-    load();
-    return () => {
-      active = false;
-    };
-  }, []);
+        } catch {}
+      };
+      load();
+      return () => {
+        active = false;
+      };
+    }
+  }, [propInsights]);
 
   const triggerReanalysis = async () => {
     setIsGenerating(true);

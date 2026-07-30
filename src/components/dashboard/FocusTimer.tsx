@@ -96,8 +96,17 @@ const formatFlowTime = (secs: number) => {
 const FLOW_CONSECUTIVE_SESSIONS_REQUIRED = 3;
 const FLOW_MIN_FOCUS_SCORE = 90;
 const FLOW_MAX_DISTRACTIONS_ALLOWED = 1;
+interface FocusTimerProps {
+  todayFocusMinutes?: number;
+  completedSessions?: number;
+  streak?: number;
+}
 
-export default function FocusTimer() {
+export default function FocusTimer({
+  todayFocusMinutes: propTodayFocusMinutes,
+  completedSessions: propCompletedSessions,
+  streak: propStreak,
+}: FocusTimerProps = {}) {
   const [mode, setMode] = useState<"focus" | "break">("focus");
   const [timeLeft, setTimeLeft] = useState(25 * 60);
   const [sessionDuration, setSessionDuration] = useState(25 * 60);
@@ -427,7 +436,26 @@ export default function FocusTimer() {
     audioSynthesizer.setAmbientVolume(volume);
   }, [volume]);
 
-  // Fetch streak & focus statistics
+  // Synchronize internal state with props if provided
+  useEffect(() => {
+    if (propTodayFocusMinutes !== undefined) {
+      setTodayFocusMinutes(propTodayFocusMinutes);
+    }
+  }, [propTodayFocusMinutes]);
+
+  useEffect(() => {
+    if (propCompletedSessions !== undefined) {
+      setCompletedSessions(propCompletedSessions);
+    }
+  }, [propCompletedSessions]);
+
+  useEffect(() => {
+    if (propStreak !== undefined) {
+      setStreak(propStreak);
+    }
+  }, [propStreak]);
+
+  // Fetch streak & focus statistics (fallback if props are not provided)
   const fetchStats = async () => {
     try {
       const res = await fetch("/api/focus-sessions/stats");
@@ -441,15 +469,17 @@ export default function FocusTimer() {
   };
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      fetchStats();
-    }, 0);
-    window.addEventListener("focusSessionSaved", fetchStats);
-    return () => {
-      clearTimeout(timer);
-      window.removeEventListener("focusSessionSaved", fetchStats);
-    };
-  }, []);
+    if (propTodayFocusMinutes === undefined && propCompletedSessions === undefined && propStreak === undefined) {
+      const timer = setTimeout(() => {
+        fetchStats();
+      }, 0);
+      window.addEventListener("focusSessionSaved", fetchStats);
+      return () => {
+        clearTimeout(timer);
+        window.removeEventListener("focusSessionSaved", fetchStats);
+      };
+    }
+  }, [propTodayFocusMinutes, propCompletedSessions, propStreak]);
 
   // Focus Score Calculator
   const calculateFocusScore = useCallback((completed: boolean, pauses: number, interruptions: number): number => {

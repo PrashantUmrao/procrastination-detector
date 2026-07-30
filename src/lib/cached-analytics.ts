@@ -5,20 +5,46 @@ import FocusSession from "@/models/FocusSession";
 import AntiProcrastinationSession from "@/models/AntiProcrastinationSession";
 import LockInSession from "@/models/LockInSession";
 
+// ==========================================
+// 0. Request-Scoped Memoized Fetch Helpers
+// ==========================================
+
+export const fetchRawFocusSessions = cache(async function fetchRawFocusSessions(userId: string) {
+  await dbConnect();
+  return FocusSession.find({ userId }).sort({ startedAt: -1 }).lean();
+});
+
+export const fetchRawAntiProcrastinationSessions = cache(async function fetchRawAntiProcrastinationSessions(userId: string) {
+  await dbConnect();
+  const thirtyDaysAgo = new Date();
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+  thirtyDaysAgo.setHours(0, 0, 0, 0);
+  return AntiProcrastinationSession.find({
+    userId,
+    startedAt: { $gte: thirtyDaysAgo },
+  }).sort({ startedAt: -1 }).lean();
+});
+
+export const fetchRawLockInSessions = cache(async function fetchRawLockInSessions(userId: string) {
+  await dbConnect();
+  return LockInSession.find({ userId }).sort({ startedAt: -1 }).lean();
+});
+
+// ==========================================
 // 1. Procrastination Score
+// ==========================================
 export const getProcrastinationScore = cache(async function getProcrastinationScore(userId: string): Promise<number> {
   "use cache";
   cacheLife({ revalidate: 600 });
   cacheTag(`analytics-${userId}`);
 
-  await dbConnect();
+  const rawSessions = await fetchRawAntiProcrastinationSessions(userId);
   const sevenDaysAgo = new Date();
   sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
-  const sessions = await AntiProcrastinationSession.find({
-    userId,
-    startedAt: { $gte: sevenDaysAgo },
-  });
+  const sessions = rawSessions.filter(
+    (s) => new Date(s.startedAt) >= sevenDaysAgo
+  );
 
   if (sessions.length === 0) return 100;
 
@@ -70,16 +96,16 @@ export const getProcrastinationScore = cache(async function getProcrastinationSc
   return Math.max(10, Math.min(100, Math.round(score)));
 });
 
+// ==========================================
 // 2. Dashboard Analytics (Caches Focus stats + Lock-in stats)
+// ==========================================
 export const getDashboardAnalytics = cache(async function getDashboardAnalytics(userId: string) {
   "use cache";
   cacheLife({ revalidate: 600 });
   cacheTag(`analytics-${userId}`);
 
-  await dbConnect();
-
   // Focus Stats Calculations
-  const sessions = await FocusSession.find({ userId }).sort({ startedAt: -1 });
+  const sessions = await fetchRawFocusSessions(userId);
 
   const now = new Date();
   const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -95,7 +121,7 @@ export const getDashboardAnalytics = cache(async function getDashboardAnalytics(
   const distractions = totalPauses + incompleteFocusSessions;
 
   // Lock-In Stats Calculations
-  const lockSessions = await LockInSession.find({ userId });
+  const lockSessions = await fetchRawLockInSessions(userId);
   let averageLockDuration = 0;
   let successfulLockSessions = 0;
   let longestLock = 0;
@@ -139,30 +165,31 @@ export const getDashboardAnalytics = cache(async function getDashboardAnalytics(
   };
 });
 
+// ==========================================
 // 3. Weekly Statistics
+// ==========================================
 export const getWeeklyStatistics = cache(async function getWeeklyStatistics(userId: string) {
   "use cache";
   cacheLife({ revalidate: 600 });
   cacheTag(`analytics-${userId}`);
 
-  await dbConnect();
   const sevenDaysAgo = new Date();
   sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
-  const focusSessions = await FocusSession.find({
-    userId,
-    startedAt: { $gte: sevenDaysAgo },
-  });
+  const rawFocus = await fetchRawFocusSessions(userId);
+  const focusSessions = rawFocus.filter(
+    (s) => new Date(s.startedAt) >= sevenDaysAgo
+  );
 
-  const antiProcSessions = await AntiProcrastinationSession.find({
-    userId,
-    startedAt: { $gte: sevenDaysAgo },
-  });
+  const rawAntiProc = await fetchRawAntiProcrastinationSessions(userId);
+  const antiProcSessions = rawAntiProc.filter(
+    (s) => new Date(s.startedAt) >= sevenDaysAgo
+  );
 
-  const lockSessions = await LockInSession.find({
-    userId,
-    startedAt: { $gte: sevenDaysAgo },
-  });
+  const rawLock = await fetchRawLockInSessions(userId);
+  const lockSessions = rawLock.filter(
+    (s) => new Date(s.startedAt) >= sevenDaysAgo
+  );
 
   const totalFocusTime = Math.round(
     focusSessions.filter((s) => s.completed).reduce((acc, s) => acc + s.duration, 0) / 60
@@ -192,30 +219,31 @@ export const getWeeklyStatistics = cache(async function getWeeklyStatistics(user
   };
 });
 
+// ==========================================
 // 4. Monthly Statistics
+// ==========================================
 export const getMonthlyStatistics = cache(async function getMonthlyStatistics(userId: string) {
   "use cache";
   cacheLife({ revalidate: 600 });
   cacheTag(`analytics-${userId}`);
 
-  await dbConnect();
   const thirtyDaysAgo = new Date();
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-  const focusSessions = await FocusSession.find({
-    userId,
-    startedAt: { $gte: thirtyDaysAgo },
-  });
+  const rawFocus = await fetchRawFocusSessions(userId);
+  const focusSessions = rawFocus.filter(
+    (s) => new Date(s.startedAt) >= thirtyDaysAgo
+  );
 
-  const antiProcSessions = await AntiProcrastinationSession.find({
-    userId,
-    startedAt: { $gte: thirtyDaysAgo },
-  });
+  const rawAntiProc = await fetchRawAntiProcrastinationSessions(userId);
+  const antiProcSessions = rawAntiProc.filter(
+    (s) => new Date(s.startedAt) >= thirtyDaysAgo
+  );
 
-  const lockSessions = await LockInSession.find({
-    userId,
-    startedAt: { $gte: thirtyDaysAgo },
-  });
+  const rawLock = await fetchRawLockInSessions(userId);
+  const lockSessions = rawLock.filter(
+    (s) => new Date(s.startedAt) >= thirtyDaysAgo
+  );
 
   const totalFocusTime = Math.round(
     focusSessions.filter((s) => s.completed).reduce((acc, s) => acc + s.duration, 0) / 60
@@ -245,20 +273,21 @@ export const getMonthlyStatistics = cache(async function getMonthlyStatistics(us
   };
 });
 
+// ==========================================
 // 5. AI Weekly Report (Caches weekly insights)
+// ==========================================
 export const getAIWeeklyReport = cache(async function getAIWeeklyReport(userId: string) {
   "use cache";
   cacheLife({ revalidate: 600 });
   cacheTag(`analytics-${userId}`);
 
-  await dbConnect();
   const sevenDaysAgo = new Date();
   sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
-  const sessions = await AntiProcrastinationSession.find({
-    userId,
-    startedAt: { $gte: sevenDaysAgo },
-  });
+  const rawSessions = await fetchRawAntiProcrastinationSessions(userId);
+  const sessions = rawSessions.filter(
+    (s) => new Date(s.startedAt) >= sevenDaysAgo
+  );
 
   if (sessions.length === 0) {
     return {
@@ -298,7 +327,7 @@ export const getAIWeeklyReport = cache(async function getAIWeeklyReport(userId: 
   // Streak tracker
   let currentStreak = 0;
   let bestStreak = 0;
-  const sorted = [...sessions].sort((a, b) => a.startedAt.getTime() - b.startedAt.getTime());
+  const sorted = [...sessions].sort((a, b) => new Date(a.startedAt).getTime() - new Date(b.startedAt).getTime());
   sorted.forEach((s) => {
     if (s.sessionStatus === "completed") {
       currentStreak++;
@@ -311,7 +340,7 @@ export const getAIWeeklyReport = cache(async function getAIWeeklyReport(userId: 
   });
 
   sessions.forEach((s) => {
-    const day = daysOfWeek[s.startedAt.getDay()];
+    const day = daysOfWeek[new Date(s.startedAt).getDay()];
 
     if (s.sessionStatus === "completed") {
       totalCompleted++;
@@ -420,22 +449,21 @@ export const getAIWeeklyReport = cache(async function getAIWeeklyReport(userId: 
   };
 });
 
+// ==========================================
 // 6. Focus Heatmap (Focus minutes grouped by weekday and hour over past 30 days)
+// ==========================================
 export const getFocusHeatmap = cache(async function getFocusHeatmap(userId: string) {
   "use cache";
   cacheLife({ revalidate: 600 });
   cacheTag(`analytics-${userId}`);
 
-  await dbConnect();
   const thirtyDaysAgo = new Date();
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-  const sessions = await FocusSession.find({
-    userId,
-    type: "focus",
-    completed: true,
-    startedAt: { $gte: thirtyDaysAgo },
-  });
+  const rawSessions = await fetchRawFocusSessions(userId);
+  const sessions = rawSessions.filter(
+    (s) => s.type === "focus" && s.completed && new Date(s.startedAt) >= thirtyDaysAgo
+  );
 
   const daysOfWeek = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -471,26 +499,26 @@ export const getFocusHeatmap = cache(async function getFocusHeatmap(userId: stri
   return flatHeatmap;
 });
 
+// ==========================================
 // 7. Productivity Trends (Daily focus score & focus duration over past 30 days)
+// ==========================================
 export const getProductivityTrends = cache(async function getProductivityTrends(userId: string) {
   "use cache";
   cacheLife({ revalidate: 600 });
   cacheTag(`analytics-${userId}`);
 
-  await dbConnect();
   const thirtyDaysAgo = new Date();
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-  // Retrieve FocusSessions and AntiProcrastinationSessions for trends
-  const focusSessions = await FocusSession.find({
-    userId,
-    startedAt: { $gte: thirtyDaysAgo },
-  });
+  const rawFocus = await fetchRawFocusSessions(userId);
+  const focusSessions = rawFocus.filter(
+    (s) => new Date(s.startedAt) >= thirtyDaysAgo
+  );
 
-  const antiProcSessions = await AntiProcrastinationSession.find({
-    userId,
-    startedAt: { $gte: thirtyDaysAgo },
-  });
+  const rawAntiProc = await fetchRawAntiProcrastinationSessions(userId);
+  const antiProcSessions = rawAntiProc.filter(
+    (s) => new Date(s.startedAt) >= thirtyDaysAgo
+  );
 
   const trends: { [dateStr: string]: { focusMinutes: number; focusScores: number[]; antiProcScores: number[] } } = {};
 
@@ -503,7 +531,8 @@ export const getProductivityTrends = cache(async function getProductivityTrends(
   }
 
   const getLocalDateStr = (d: Date) => {
-    return `${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, "0")}-${d.getDate().toString().padStart(2, "0")}`;
+    const dateObj = new Date(d);
+    return `${dateObj.getFullYear()}-${(dateObj.getMonth() + 1).toString().padStart(2, "0")}-${dateObj.getDate().toString().padStart(2, "0")}`;
   };
 
   focusSessions.forEach((s) => {
@@ -548,20 +577,17 @@ export const getProductivityTrends = cache(async function getProductivityTrends(
   return formattedTrends;
 });
 
+// ==========================================
 // 8. Streak Calculations
+// ==========================================
 export const getStreakCalculations = cache(async function getStreakCalculations(userId: string) {
   "use cache";
   cacheLife({ revalidate: 600 });
   cacheTag(`analytics-${userId}`);
 
-  await dbConnect();
-
+  const rawFocus = await fetchRawFocusSessions(userId);
   // Focus Streak (consecutive days with at least one completed focus session)
-  const focusSessions = await FocusSession.find({
-    userId,
-    type: "focus",
-    completed: true,
-  }).sort({ startedAt: -1 });
+  const focusSessions = rawFocus.filter((s) => s.type === "focus" && s.completed);
 
   let streak = 0;
   if (focusSessions.length > 0) {
@@ -602,10 +628,10 @@ export const getStreakCalculations = cache(async function getStreakCalculations(
   // Best Streak from AntiProcrastinationSession (calculated over past 7 days of sessions)
   const sevenDaysAgo = new Date();
   sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-  const antiProcSessions = await AntiProcrastinationSession.find({
-    userId,
-    startedAt: { $gte: sevenDaysAgo },
-  }).sort({ startedAt: 1 });
+  const rawAntiProc = await fetchRawAntiProcrastinationSessions(userId);
+  const antiProcSessions = [...rawAntiProc]
+    .filter((s) => new Date(s.startedAt) >= sevenDaysAgo)
+    .sort((a, b) => new Date(a.startedAt).getTime() - new Date(b.startedAt).getTime());
 
   let currentStreak = 0;
   let bestStreak = 0;

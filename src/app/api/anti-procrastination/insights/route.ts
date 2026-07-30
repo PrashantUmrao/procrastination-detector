@@ -1,3 +1,7 @@
+/**
+ * @deprecated Use GET /api/dashboard instead.
+ * Preserved for backward compatibility.
+ */
 import { NextResponse } from "next/server";
 import { getAuthUser } from "@/lib/auth";
 import { getAIWeeklyReport } from "@/lib/cached-analytics";
@@ -10,7 +14,12 @@ export async function GET() {
     }
 
     const report = await getAIWeeklyReport(user.clerkId);
-    return NextResponse.json(report);
+    return NextResponse.json(report, {
+      headers: {
+        "Deprecation": "true",
+        "Link": "</api/dashboard>; rel=\"successor-version\"",
+      },
+    });
   } catch (error) {
     console.error("Failed to fetch anti-procrastination insights:", error);
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
