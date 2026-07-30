@@ -4,6 +4,7 @@ import "./globals.css";
 import { AuthProvider } from "@/components/providers/AuthProvider";
 import { ScrollProvider } from "@/components/providers/ScrollProvider";
 import { getAuthUser } from "@/lib/auth";
+import { Suspense } from "react";
 
 const orbitron = Orbitron({
   variable: "--font-orbitron",
@@ -30,13 +31,20 @@ export const metadata: Metadata = {
   description: "A cinematic storytelling experience and high-performance psychological productivity platform designed to build ironclad discipline.",
 };
 
+async function UserSync() {
+  try {
+    await getAuthUser();
+  } catch (error) {
+    console.error("Error in UserSync component:", error);
+  }
+  return null;
+}
+
 export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  // Synchronize authenticated user state with MongoDB
-  await getAuthUser();
   return (
     <html
       lang="en"
@@ -45,6 +53,9 @@ export default async function RootLayout({
       <body className="min-h-full bg-black text-white selection:bg-white selection:text-black">
         <AuthProvider>
           <ScrollProvider>
+            <Suspense fallback={null}>
+              <UserSync />
+            </Suspense>
             {children}
           </ScrollProvider>
         </AuthProvider>

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { dbConnect } from "@/lib/mongodb";
 import AntiProcrastinationSession from "@/models/AntiProcrastinationSession";
 import { getAuthUser } from "@/lib/auth";
+import { revalidateTag } from "next/cache";
 
 export async function POST(req: Request) {
   try {
@@ -54,8 +55,11 @@ export async function POST(req: Request) {
         startedAt: new Date(startedAt),
         endedAt: new Date(endedAt),
       },
-      { new: true, upsert: true }
+      { returnDocument: "after", upsert: true }
     );
+
+    // Invalidate cached analytics
+    revalidateTag(`analytics-${user.clerkId}`, { expire: 0 });
 
     return NextResponse.json({ success: true, record });
   } catch (error) {

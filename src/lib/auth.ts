@@ -1,6 +1,7 @@
 import { currentUser } from "@clerk/nextjs/server";
 import { dbConnect } from "@/lib/mongodb";
 import User, { IUser } from "@/models/User";
+import { cache } from "react";
 
 /**
  * Reusable server helper that returns the currently authenticated MongoDB user.
@@ -13,7 +14,7 @@ import User, { IUser } from "@/models/User";
  * 5. Handle race conditions to prevent creating duplicate users.
  * 6. Return the MongoDB user document, or null if unauthenticated / database connection fails.
  */
-export async function getAuthUser(): Promise<IUser | null> {
+export const getAuthUser = cache(async (): Promise<IUser | null> => {
   try {
     const clerkUser = await currentUser();
     if (!clerkUser) {
@@ -65,11 +66,13 @@ export async function getAuthUser(): Promise<IUser | null> {
     const err = error as { digest?: string; message?: string };
     if (
       err.message?.includes("Dynamic server usage") ||
-      err.digest === "DYNAMIC_SERVER_USAGE"
+      err.digest === "DYNAMIC_SERVER_USAGE" ||
+      err.digest === "HANGING_PROMISE_REJECTION" ||
+      err.message?.includes("headers()")
     ) {
       throw error;
     }
     console.error("Unexpected error in getAuthUser helper:", error);
     return null;
   }
-}
+});

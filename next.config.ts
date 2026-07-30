@@ -2,6 +2,7 @@ import type { NextConfig } from "next";
 import path from "path";
 
 const nextConfig: NextConfig = {
+  cacheComponents: true,
   turbopack: {
     // Force Turbopack to treat the project folder as the workspace root directory
     root: path.resolve(__dirname),

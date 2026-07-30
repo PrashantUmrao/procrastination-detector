@@ -43,6 +43,10 @@ const FocusSessionSchema = new Schema<IFocusSession>(
   }
 );
 
+// Define compound indexes for common queries and sorting
+FocusSessionSchema.index({ userId: 1, startedAt: -1 });
+FocusSessionSchema.index({ userId: 1, type: 1, completed: 1, startedAt: -1 });
+
 const FocusSession: Model<IFocusSession> =
   mongoose.models?.FocusSession || mongoose.model<IFocusSession>("FocusSession", FocusSessionSchema);
 

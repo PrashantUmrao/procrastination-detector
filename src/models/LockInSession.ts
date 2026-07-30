@@ -51,6 +51,9 @@ const LockInSessionSchema = new Schema<ILockInSession>(
   }
 );
 
+// Define compound indexes for common queries and sorting
+LockInSessionSchema.index({ userId: 1, startedAt: -1 });
+
 const LockInSession: Model<ILockInSession> =
   mongoose.models?.LockInSession || mongoose.model<ILockInSession>("LockInSession", LockInSessionSchema);
 

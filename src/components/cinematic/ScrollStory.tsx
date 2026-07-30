@@ -266,7 +266,7 @@ export default function ScrollStory({ onEnterDashboard }: { onEnterDashboard: ()
               Procrastination Detector
             </h3>
             <p className="font-inter text-[10px] text-white/30 tracking-wider">
-              &copy; {new Date().getFullYear()} DISCIPLINE ACADEMY. ALL RIGHTS RESERVED.
+              &copy; 2026 DISCIPLINE ACADEMY. ALL RIGHTS RESERVED.
             </p>
           </div>
           

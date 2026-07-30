@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAuthUser } from "@/lib/auth";
-import { getDashboardAnalytics } from "@/lib/cached-analytics";
+import { getMonthlyStatistics } from "@/lib/cached-analytics";
 
 export async function GET() {
   try {
@@ -9,10 +9,10 @@ export async function GET() {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const analytics = await getDashboardAnalytics(user.clerkId);
-    return NextResponse.json(analytics.lockInStats);
+    const stats = await getMonthlyStatistics(user.clerkId);
+    return NextResponse.json(stats);
   } catch (error) {
-    console.error("Failed to fetch lock-in stats:", error);
+    console.error("Failed to fetch monthly stats:", error);
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }
 }

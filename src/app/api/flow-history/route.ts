@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { dbConnect } from "@/lib/mongodb";
 import FlowHistory from "@/models/FlowHistory";
 import { getAuthUser } from "@/lib/auth";
+import { revalidateTag } from "next/cache";
 
 export async function POST(req: Request) {
   try {
@@ -29,6 +30,9 @@ export async function POST(req: Request) {
       maxContinuousFlow: maxContinuousFlow || 0,
       reflection: reflection || "",
     });
+
+    // Invalidate cached analytics
+    revalidateTag(`analytics-${user.clerkId}`, { expire: 0 });
 
     return NextResponse.json({ success: true, record });
   } catch (error) {

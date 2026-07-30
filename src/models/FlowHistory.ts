@@ -29,6 +29,9 @@ const FlowHistorySchema = new Schema<IFlowHistory>(
   }
 );
 
+// Define compound indexes for common queries and sorting
+FlowHistorySchema.index({ userId: 1, startedAt: -1 });
+
 const FlowHistory: Model<IFlowHistory> =
   mongoose.models?.FlowHistory || mongoose.model<IFlowHistory>("FlowHistory", FlowHistorySchema);
 

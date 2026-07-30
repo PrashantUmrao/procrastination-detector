@@ -63,6 +63,9 @@ const AntiProcrastinationSessionSchema = new Schema<IAntiProcrastinationSession>
   }
 );
 
+// Define compound indexes for common queries and sorting
+AntiProcrastinationSessionSchema.index({ userId: 1, startedAt: -1 });
+
 const AntiProcrastinationSession: Model<IAntiProcrastinationSession> =
   mongoose.models?.AntiProcrastinationSession ||
   mongoose.model<IAntiProcrastinationSession>("AntiProcrastinationSession", AntiProcrastinationSessionSchema);

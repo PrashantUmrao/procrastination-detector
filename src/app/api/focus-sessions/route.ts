@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { dbConnect } from "@/lib/mongodb";
 import FocusSession from "@/models/FocusSession";
 import { getAuthUser } from "@/lib/auth";
+import { revalidateTag } from "next/cache";
 
 export async function POST(req: Request) {
   try {
@@ -52,6 +53,9 @@ export async function POST(req: Request) {
       volume: typeof volume === "number" ? volume : 0.5,
       deviceType: deviceType || "Desktop",
     });
+
+    // Invalidate cached analytics
+    revalidateTag(`analytics-${user.clerkId}`, { expire: 0 });
 
     return NextResponse.json({ success: true, session });
   } catch (error) {
