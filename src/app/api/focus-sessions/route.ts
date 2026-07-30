@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { dbConnect } from "@/lib/mongodb";
 import FocusSession from "@/models/FocusSession";
-import { getAuthUser } from "@/lib/auth";
+import { getAuthUser, isDynamicError } from "@/lib/auth";
 import { revalidateTag } from "next/cache";
 
 export async function POST(req: Request) {
@@ -59,6 +59,9 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ success: true, session });
   } catch (error) {
+    if (isDynamicError(error)) {
+      throw error;
+    }
     console.error("Failed to save focus session:", error);
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }

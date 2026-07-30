@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getAuthUser } from "@/lib/auth";
+import { getAuthUser, isDynamicError } from "@/lib/auth";
 import { getDashboardAnalytics } from "@/lib/cached-analytics";
 
 export async function GET() {
@@ -12,6 +12,9 @@ export async function GET() {
     const analytics = await getDashboardAnalytics(user.clerkId);
     return NextResponse.json(analytics.lockInStats);
   } catch (error) {
+    if (isDynamicError(error)) {
+      throw error;
+    }
     console.error("Failed to fetch lock-in stats:", error);
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }

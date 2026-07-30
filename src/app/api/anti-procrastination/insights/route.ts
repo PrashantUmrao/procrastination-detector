@@ -3,7 +3,7 @@
  * Preserved for backward compatibility.
  */
 import { NextResponse } from "next/server";
-import { getAuthUser } from "@/lib/auth";
+import { getAuthUser, isDynamicError } from "@/lib/auth";
 import { getAIWeeklyReport } from "@/lib/cached-analytics";
 
 export async function GET() {
@@ -21,6 +21,9 @@ export async function GET() {
       },
     });
   } catch (error) {
+    if (isDynamicError(error)) {
+      throw error;
+    }
     console.error("Failed to fetch anti-procrastination insights:", error);
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }

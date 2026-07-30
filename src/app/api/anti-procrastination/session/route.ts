@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { dbConnect } from "@/lib/mongodb";
 import AntiProcrastinationSession from "@/models/AntiProcrastinationSession";
-import { getAuthUser } from "@/lib/auth";
+import { getAuthUser, isDynamicError } from "@/lib/auth";
 import { revalidateTag } from "next/cache";
 
 export async function POST(req: Request) {
@@ -63,6 +63,9 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ success: true, record });
   } catch (error) {
+    if (isDynamicError(error)) {
+      throw error;
+    }
     console.error("Failed to save anti-procrastination session:", error);
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }

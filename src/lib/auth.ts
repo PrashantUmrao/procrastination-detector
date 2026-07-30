@@ -3,6 +3,18 @@ import { dbConnect } from "@/lib/mongodb";
 import User, { IUser } from "@/models/User";
 import { cache } from "react";
 
+export function isDynamicError(error: any): boolean {
+  if (!error) return false;
+  const message = error.message || "";
+  const digest = error.digest || "";
+  return (
+    message.includes("Dynamic server usage") ||
+    digest === "DYNAMIC_SERVER_USAGE" ||
+    digest === "HANGING_PROMISE_REJECTION" ||
+    message.includes("headers()")
+  );
+}
+
 /**
  * Reusable server helper that returns the currently authenticated MongoDB user.
  * 
@@ -63,13 +75,7 @@ export const getAuthUser = cache(async (): Promise<IUser | null> => {
 
     return dbUser;
   } catch (error) {
-    const err = error as { digest?: string; message?: string };
-    if (
-      err.message?.includes("Dynamic server usage") ||
-      err.digest === "DYNAMIC_SERVER_USAGE" ||
-      err.digest === "HANGING_PROMISE_REJECTION" ||
-      err.message?.includes("headers()")
-    ) {
+    if (isDynamicError(error)) {
       throw error;
     }
     console.error("Unexpected error in getAuthUser helper:", error);

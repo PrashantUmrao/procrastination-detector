@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getAuthUser } from "@/lib/auth";
+import { getAuthUser, isDynamicError } from "@/lib/auth";
 import { getProductivityTrends } from "@/lib/cached-analytics";
 
 export async function GET() {
@@ -12,6 +12,9 @@ export async function GET() {
     const stats = await getProductivityTrends(user.clerkId);
     return NextResponse.json(stats);
   } catch (error) {
+    if (isDynamicError(error)) {
+      throw error;
+    }
     console.error("Failed to fetch productivity trends:", error);
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }

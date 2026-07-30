@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getAuthUser } from "@/lib/auth";
+import { getAuthUser, isDynamicError } from "@/lib/auth";
 import { getAggregatedDashboardData } from "@/lib/dashboard-service";
 
 export async function GET() {
@@ -12,6 +12,9 @@ export async function GET() {
     const data = await getAggregatedDashboardData(user.clerkId);
     return NextResponse.json(data);
   } catch (error) {
+    if (isDynamicError(error)) {
+      throw error;
+    }
     console.error("Failed to fetch dashboard aggregated stats:", error);
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }
