@@ -476,9 +476,10 @@ export default function HeroSection() {
           <motion.div variants={itemVariants} className="flex md:hidden order-last">
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="font-orbitron uppercase text-[9px] tracking-[0.25em] text-white/50 hover:text-white transition-colors cursor-pointer py-2 px-3 border border-white/10 hover:border-white/20 rounded bg-black/50 backdrop-blur-sm z-[60]"
+              aria-label={mobileMenuOpen ? "Close menu" : "Open menu"}
+              className="font-orbitron uppercase text-[9px] tracking-[0.25em] text-white/50 hover:text-white transition-colors cursor-pointer py-2 px-3 border border-white/10 hover:border-white/20 rounded bg-black/50 backdrop-blur-sm z-[60] flex items-center justify-center focus:outline-none focus-visible:ring-1 focus-visible:ring-white/50"
             >
-              {mobileMenuOpen ? "[ Close ]" : "[ Menu ]"}
+              {mobileMenuOpen ? "← BACK" : "☰"}
             </button>
           </motion.div>
 
@@ -562,7 +563,7 @@ export default function HeroSection() {
               >
                 <button
                   onClick={() => {
-                    router.push("/auth");
+                    document.getElementById("chapter-enemy")?.scrollIntoView({ behavior: "smooth" });
                   }}
                   className="group flex items-center justify-center gap-3 px-7 w-full md:w-auto h-12 md:h-auto py-4 md:py-3.5 bg-white text-black font-orbitron text-[9px] tracking-[0.25em] uppercase hover:bg-black hover:text-white border border-white hover:border-white/20 transition-all duration-300 shadow-[0_0_15px_rgba(255,255,255,0.06)] active:scale-95 cursor-pointer"
                 >
@@ -618,13 +619,6 @@ export default function HeroSection() {
               
               {isSignedIn ? (
                 <>
-                  <a
-                    href="/dashboard"
-                    onClick={() => setMobileMenuOpen(false)}
-                    className="font-orbitron uppercase text-[10px] tracking-[0.25em] text-white/70 hover:text-white transition-colors py-3 w-full text-center border-b border-white/5 cursor-pointer"
-                  >
-                    Dashboard
-                  </a>
                   <div className="py-3 flex justify-center items-center w-full z-[70]">
                     <UserButton />
                   </div>

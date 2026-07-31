@@ -27,9 +27,6 @@ export default function CinematicIntro({ onComplete }: CinematicIntroProps) {
   const signatureRef = useRef<HTMLHeadingElement | null>(null);
   const signatureLightRef = useRef<HTMLDivElement | null>(null);
 
-  // Sound state
-  const [isMuted, setIsMuted] = useState(true);
-  const isMutedRef = useRef(true);
   
   // Audio Web Synth refs
   const audioCtxRef = useRef<ExtendedAudioContext | null>(null);
@@ -41,18 +38,6 @@ export default function CinematicIntro({ onComplete }: CinematicIntroProps) {
     signatureReveal: 0,   // 0 to 1
   });
 
-  // Track if sound is unmuted
-  useEffect(() => {
-    isMutedRef.current = isMuted;
-    if (!isMuted && audioCtxRef.current) {
-      if (audioCtxRef.current.state === "suspended") {
-        audioCtxRef.current.resume();
-      }
-      fadeSoundIn();
-    } else if (isMuted) {
-      fadeSoundOut();
-    }
-  }, [isMuted]);
 
   // Clean up Audio Context on unmount
   useEffect(() => {
@@ -138,9 +123,10 @@ export default function CinematicIntro({ onComplete }: CinematicIntroProps) {
 
       ctx.masterGain = masterGain;
 
-      if (!isMutedRef.current) {
-        fadeSoundIn();
+      if (ctx.state === "suspended") {
+        ctx.resume();
       }
+      fadeSoundIn();
     } catch (e) {
       console.warn("Web Audio API not supported or blocked: ", e);
     }
@@ -167,7 +153,7 @@ export default function CinematicIntro({ onComplete }: CinematicIntroProps) {
   }
 
   const playBladeShimmerSound = () => {
-    if (isMutedRef.current || !audioCtxRef.current) return;
+    if (!audioCtxRef.current) return;
     
     const ctx = audioCtxRef.current;
     const now = ctx.currentTime;
@@ -196,7 +182,7 @@ export default function CinematicIntro({ onComplete }: CinematicIntroProps) {
   };
 
   const playChimeSound = () => {
-    if (isMutedRef.current || !audioCtxRef.current) return;
+    if (!audioCtxRef.current) return;
     
     const ctx = audioCtxRef.current;
     const now = ctx.currentTime;
@@ -506,15 +492,6 @@ export default function CinematicIntro({ onComplete }: CinematicIntroProps) {
     initAudio();
   };
 
-  const toggleMute = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (isMuted) {
-      initAudio();
-      setIsMuted(false);
-    } else {
-      setIsMuted(true);
-    }
-  };
 
   return (
     <div
@@ -522,13 +499,6 @@ export default function CinematicIntro({ onComplete }: CinematicIntroProps) {
       onClick={handleInteraction}
       className="fixed inset-0 z-[9999] bg-black flex flex-col items-center justify-center select-none overflow-hidden"
     >
-      {/* Sound Control Button */}
-      <button
-        onClick={toggleMute}
-        className="absolute top-8 right-8 z-[10000] font-serif text-[10px] tracking-[0.25em] text-white/40 hover:text-white/80 transition-colors uppercase py-2 px-3 border border-white/10 hover:border-white/20 rounded cursor-pointer"
-      >
-        {isMuted ? "[ Sound On ]" : "[ Sound Off ]"}
-      </button>
 
       {/* Ambient Canvas Background */}
       <canvas ref={canvasRef} className="absolute inset-0 w-full h-full pointer-events-none" />
