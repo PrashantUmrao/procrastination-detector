@@ -11,7 +11,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: "Dashboard Sanctuary | Procrastination Detector by Prashant Umrao",
     description: "Manage focus timelines, track daily habits, and beat avoidance.",
-    url: "https://procrastination-detector.vercel.app/dashboard",
+    url: "https://procrasti.prashantumrao.me/dashboard",
     type: "website",
   },
   twitter: {
@@ -29,13 +29,13 @@ export default function DashboardPage() {
         "@type": "ListItem",
         "position": 1,
         "name": "Home",
-        "item": "https://procrastination-detector.vercel.app",
+        "item": "https://procrasti.prashantumrao.me",
       },
       {
         "@type": "ListItem",
         "position": 2,
         "name": "Dashboard",
-        "item": "https://procrastination-detector.vercel.app/dashboard",
+        "item": "https://procrasti.prashantumrao.me/dashboard",
       },
     ],
   };

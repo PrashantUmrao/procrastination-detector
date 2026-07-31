@@ -51,7 +51,7 @@ export const metadata: Metadata = {
   ],
   authors: [{ name: "Prashant Umrao", url: "https://github.com/PrashantUmrao" }],
   creator: "Prashant Umrao",
-  metadataBase: new URL("https://procrastination-detector.vercel.app"),
+  metadataBase: new URL("https://procrasti.prashantumrao.me"),
   alternates: {
     canonical: "/",
   },
@@ -59,7 +59,7 @@ export const metadata: Metadata = {
     title: "Procrastination Detector | Beat Procrastination by Prashant Umrao",
     description:
       "Confront avoidances, establish focus, and master your timeline with the ultimate cinematic productivity system.",
-    url: "https://procrastination-detector.vercel.app",
+    url: "https://procrasti.prashantumrao.me",
     siteName: "Procrastination Detector",
     locale: "en_US",
     type: "website",
@@ -100,8 +100,8 @@ const globalOrgSchema = {
   "@context": "https://schema.org",
   "@type": "Organization",
   "name": "Procrastination Detector",
-  "url": "https://procrastination-detector.vercel.app",
-  "logo": "https://procrastination-detector.vercel.app/favicon.ico",
+  "url": "https://procrasti.prashantumrao.me",
+  "logo": "https://procrasti.prashantumrao.me/favicon.ico",
   "founder": {
     "@type": "Person",
     "name": "Prashant Umrao",

@@ -12,7 +12,7 @@ export const metadata: Metadata = {
     title: "Procrastination Detector | Beat Procrastination by Prashant Umrao",
     description:
       "Confront avoidances, establish focus, and master your timeline with the ultimate cinematic productivity system.",
-    url: "https://procrastination-detector.vercel.app",
+    url: "https://procrasti.prashantumrao.me",
     type: "website",
   },
   twitter: {
