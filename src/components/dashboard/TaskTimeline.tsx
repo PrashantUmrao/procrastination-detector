@@ -20,23 +20,33 @@ export default function TaskTimeline() {
   const [editTitle, setEditTitle] = useState("");
   const [editCategory, setEditCategory] = useState<"DUEL" | "SYSTEM" | "REFLECT" | "BATTLE">("BATTLE");
 
+  const [hasError, setHasError] = useState(false);
+
   // Fetch all tasks from MongoDB
   const fetchTasksList = useCallback(async () => {
+    setIsLoading(true);
+    setHasError(false);
     try {
       const res = await fetch("/api/tasks");
       if (res.ok) {
         const data = await res.json();
         setTasks(data);
+      } else {
+        setHasError(true);
       }
     } catch (e) {
       console.error("Failed to load tasks:", e);
+      setHasError(true);
     } finally {
       setIsLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    fetchTasksList();
+    const timer = setTimeout(() => {
+      fetchTasksList();
+    }, 0);
+    return () => clearTimeout(timer);
   }, [fetchTasksList]);
 
   // Toggle completion status (Optimistic Update)
@@ -189,7 +199,22 @@ export default function TaskTimeline() {
         </form>
 
         {/* Task List in vertical timeline */}
-        {isLoading && tasks.length === 0 ? (
+        {hasError ? (
+          <div className="flex flex-col items-center justify-center py-8 px-4 border border-dashed border-white/5 rounded bg-black/20 text-center">
+            <span className="font-orbitron uppercase text-[9px] tracking-[0.2em] text-white/40 mb-2">
+              Unavailable
+            </span>
+            <p className="font-inter text-[10px] text-white/20 leading-relaxed mb-4 max-w-[200px]">
+              Unable to load tasks.
+            </p>
+            <button
+              onClick={fetchTasksList}
+              className="px-3 py-1.5 border border-white/20 hover:border-white/40 text-white font-orbitron text-[9px] tracking-wider uppercase rounded cursor-pointer hover:bg-white/5 transition-all active:scale-95"
+            >
+              Retry
+            </button>
+          </div>
+        ) : isLoading && tasks.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-10 gap-2">
             <div className="w-4 h-4 border border-t-white border-white/10 rounded-full animate-spin" />
             <span className="font-mono text-[9px] tracking-widest text-white/20 uppercase">
@@ -232,7 +257,7 @@ export default function TaskTimeline() {
                       <div className="flex gap-2 items-center shrink-0">
                         <select
                           value={editCategory}
-                          onChange={(e) => setEditCategory(e.target.value as any)}
+                          onChange={(e) => setEditCategory(e.target.value as "DUEL" | "SYSTEM" | "REFLECT" | "BATTLE")}
                           className="bg-black border border-white/10 px-2 py-1 text-[10px] font-mono text-white/50 focus:outline-none focus:border-white/30 rounded cursor-pointer h-7"
                         >
                           <option value="BATTLE">BATTLE</option>

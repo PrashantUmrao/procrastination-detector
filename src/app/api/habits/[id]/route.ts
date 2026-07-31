@@ -27,7 +27,7 @@ export async function PATCH(
       return NextResponse.json({ error: "Habit not found" }, { status: 404 });
     }
 
-    const updateFields: any = {};
+    const updateFields: Record<string, string | number | boolean> = {};
 
     if (title !== undefined) updateFields.title = title;
     if (time !== undefined) updateFields.time = time;

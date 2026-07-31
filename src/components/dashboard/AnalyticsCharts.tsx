@@ -3,16 +3,6 @@
 import React, { useState, useEffect } from "react";
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid } from "recharts";
 
-const MOCK_DATA = [
-  { day: "Mon", focus: 65, procrast: 35 },
-  { day: "Tue", focus: 80, procrast: 20 },
-  { day: "Wed", focus: 55, procrast: 45 },
-  { day: "Thu", focus: 95, procrast: 5 },
-  { day: "Fri", focus: 75, procrast: 25 },
-  { day: "Sat", focus: 45, procrast: 55 },
-  { day: "Sun", focus: 85, procrast: 15 },
-];
-
 interface TooltipPayloadItem {
   value: number;
   payload: {
@@ -131,9 +121,7 @@ export default function AnalyticsCharts({
       }))
     : [];
 
-  const weeklyEfficiency = weeklyAnalytics && weeklyAnalytics.averageFocusScore > 0
-    ? `${weeklyAnalytics.averageFocusScore}%`
-    : "No data yet";
+
 
   return (
     <div className="bg-card border border-border p-6 rounded flex flex-col justify-between w-full h-full relative group">

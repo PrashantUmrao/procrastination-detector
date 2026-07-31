@@ -14,11 +14,13 @@ export default function ProductivityScore({ score: propScore }: ProductivityScor
 
   // Eased dynamic gauge & score text animation
   useEffect(() => {
-    let start = 0;
+    const start = 0;
     const end = score;
     if (end === 0) {
-      setAnimatedScore(0);
-      return;
+      const timer = setTimeout(() => {
+        setAnimatedScore(0);
+      }, 0);
+      return () => clearTimeout(timer);
     }
 
     const duration = 1200; // ms

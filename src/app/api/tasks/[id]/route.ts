@@ -27,7 +27,7 @@ export async function PATCH(
       return NextResponse.json({ error: "Task not found" }, { status: 404 });
     }
 
-    const updateFields: any = {};
+    const updateFields: Record<string, string | number | boolean> = {};
     if (title !== undefined) updateFields.title = title;
     if (category !== undefined) updateFields.category = category;
     if (completed !== undefined) updateFields.completed = completed;

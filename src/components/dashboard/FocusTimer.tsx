@@ -439,19 +439,28 @@ export default function FocusTimer({
   // Synchronize internal state with props if provided
   useEffect(() => {
     if (propTodayFocusMinutes !== undefined) {
-      setTodayFocusMinutes(propTodayFocusMinutes);
+      const timer = setTimeout(() => {
+        setTodayFocusMinutes(propTodayFocusMinutes);
+      }, 0);
+      return () => clearTimeout(timer);
     }
   }, [propTodayFocusMinutes]);
 
   useEffect(() => {
     if (propCompletedSessions !== undefined) {
-      setCompletedSessions(propCompletedSessions);
+      const timer = setTimeout(() => {
+        setCompletedSessions(propCompletedSessions);
+      }, 0);
+      return () => clearTimeout(timer);
     }
   }, [propCompletedSessions]);
 
   useEffect(() => {
     if (propStreak !== undefined) {
-      setStreak(propStreak);
+      const timer = setTimeout(() => {
+        setStreak(propStreak);
+      }, 0);
+      return () => clearTimeout(timer);
     }
   }, [propStreak]);
 

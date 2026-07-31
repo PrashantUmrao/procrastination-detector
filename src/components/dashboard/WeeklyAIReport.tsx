@@ -23,12 +23,18 @@ interface WeeklyAIReportProps {
 export default function WeeklyAIReport({ insights: propInsights, onRefresh }: WeeklyAIReportProps = {}) {
   const [isGenerating, setIsGenerating] = useState(false);
   const [localInsights, setLocalInsights] = useState<InsightsData | null>(null);
+  const [hasError, setHasError] = useState(false);
 
   const insights = propInsights !== undefined ? propInsights : localInsights;
 
   const fetchInsights = useCallback(async () => {
+    setHasError(false);
     if (onRefresh) {
-      await onRefresh();
+      try {
+        await onRefresh();
+      } catch {
+        setHasError(true);
+      }
       return;
     }
     try {
@@ -36,9 +42,11 @@ export default function WeeklyAIReport({ insights: propInsights, onRefresh }: We
       if (res.ok) {
         const data = await res.json();
         setLocalInsights(data);
+      } else {
+        setHasError(true);
       }
-    } catch (e) {
-      console.error("Failed to load insights:", e);
+    } catch {
+      setHasError(true);
     }
   }, [onRefresh]);
 
@@ -46,6 +54,7 @@ export default function WeeklyAIReport({ insights: propInsights, onRefresh }: We
     if (propInsights === undefined) {
       let active = true;
       const load = async () => {
+        setHasError(false);
         try {
           const res = await fetch("/api/anti-procrastination/insights");
           if (res.ok) {
@@ -53,13 +62,23 @@ export default function WeeklyAIReport({ insights: propInsights, onRefresh }: We
             if (active) {
               setLocalInsights(data);
             }
+          } else {
+            if (active) setHasError(true);
           }
-        } catch {}
+        } catch {
+          if (active) setHasError(true);
+        }
       };
       load();
       return () => {
         active = false;
       };
+    } else if (propInsights === null) {
+      // Parent load returned null/empty
+      const timer = setTimeout(() => {
+        setHasError(true);
+      }, 0);
+      return () => clearTimeout(timer);
     }
   }, [propInsights]);
 
@@ -95,7 +114,16 @@ export default function WeeklyAIReport({ insights: propInsights, onRefresh }: We
           </button>
         </div>
 
-        {isGenerating || !insights ? (
+        {hasError ? (
+          <div className="flex flex-col items-center justify-center py-12 px-4 border border-dashed border-white/5 rounded bg-black/20 text-center">
+            <span className="font-orbitron uppercase text-[9px] tracking-[0.2em] text-white/40 mb-2">
+              Unavailable
+            </span>
+            <p className="font-inter text-[10px] text-white/20 leading-relaxed max-w-[200px]">
+              Unable to load insights. Complete more Focus Sessions to generate analytics.
+            </p>
+          </div>
+        ) : isGenerating || !insights ? (
           <div className="flex flex-col items-center justify-center py-16 gap-3">
             <div className="w-4 h-4 border border-t-white border-white/10 rounded-full animate-spin" />
             <span className="font-mono text-[9px] tracking-widest text-white/30 uppercase">

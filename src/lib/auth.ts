@@ -3,10 +3,11 @@ import { dbConnect } from "@/lib/mongodb";
 import User, { IUser } from "@/models/User";
 import { cache } from "react";
 
-export function isDynamicError(error: any): boolean {
-  if (!error) return false;
-  const message = error.message || "";
-  const digest = error.digest || "";
+export function isDynamicError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const err = error as Record<string, unknown>;
+  const message = (err.message as string) || "";
+  const digest = (err.digest as string) || "";
   return (
     message.includes("Dynamic server usage") ||
     digest === "DYNAMIC_SERVER_USAGE" ||
@@ -27,58 +28,45 @@ export function isDynamicError(error: any): boolean {
  * 6. Return the MongoDB user document, or null if unauthenticated / database connection fails.
  */
 export const getAuthUser = cache(async (): Promise<IUser | null> => {
-  try {
-    const clerkUser = await currentUser();
-    if (!clerkUser) {
-      return null;
-    }
-
-    // Connect to database
-    try {
-      await dbConnect();
-    } catch (dbError) {
-      console.error("Failed to connect to MongoDB in getAuthUser helper:", dbError);
-      return null;
-    }
-
-    // Search MongoDB using clerkId
-    let dbUser = await User.findOne({ clerkId: clerkUser.id });
-
-    // If the user does not exist, automatically create a new document
-    if (!dbUser) {
-      const email = clerkUser.emailAddresses[0]?.emailAddress || "";
-      const firstName = clerkUser.firstName || "";
-      const lastName = clerkUser.lastName || "";
-      const imageUrl = clerkUser.imageUrl || "";
-
-      try {
-        dbUser = await User.create({
-          clerkId: clerkUser.id,
-          email,
-          firstName,
-          lastName,
-          imageUrl,
-        });
-        console.log(`Successfully created new MongoDB user for clerkId: ${clerkUser.id}`);
-      } catch (err) {
-        // Handle concurrent user registration (duplicate key error code 11000)
-        const mongoError = err as { code?: number };
-        if (mongoError.code === 11000) {
-          console.warn(`Duplicate creation attempt caught for clerkId: ${clerkUser.id}. Fetching existing document.`);
-          dbUser = await User.findOne({ clerkId: clerkUser.id });
-        } else {
-          console.error("Error creating User document in database:", err);
-          throw err;
-        }
-      }
-    }
-
-    return dbUser;
-  } catch (error) {
-    if (isDynamicError(error)) {
-      throw error;
-    }
-    console.error("Unexpected error in getAuthUser helper:", error);
+  const clerkUser = await currentUser();
+  if (!clerkUser) {
     return null;
   }
+
+  // Connect to database
+  await dbConnect();
+
+  // Search MongoDB using clerkId
+  let dbUser = await User.findOne({ clerkId: clerkUser.id });
+
+  // If the user does not exist, automatically create a new document
+  if (!dbUser) {
+    const email = clerkUser.emailAddresses[0]?.emailAddress || "";
+    const firstName = clerkUser.firstName || "";
+    const lastName = clerkUser.lastName || "";
+    const imageUrl = clerkUser.imageUrl || "";
+
+    try {
+      dbUser = await User.create({
+        clerkId: clerkUser.id,
+        email,
+        firstName,
+        lastName,
+        imageUrl,
+      });
+      console.log(`Successfully created new MongoDB user for clerkId: ${clerkUser.id}`);
+    } catch (err) {
+      // Handle concurrent user registration (duplicate key error code 11000)
+      const mongoError = err as { code?: number };
+      if (mongoError.code === 11000) {
+        console.warn(`Duplicate creation attempt caught for clerkId: ${clerkUser.id}. Fetching existing document.`);
+        dbUser = await User.findOne({ clerkId: clerkUser.id });
+      } else {
+        console.error("Error creating User document in database:", err);
+        throw err;
+      }
+    }
+  }
+
+  return dbUser;
 });

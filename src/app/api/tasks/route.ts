@@ -121,7 +121,7 @@ export async function PUT(req: Request) {
     await dbConnect();
 
     // Update each task in the batch (matching ID and user)
-    const updatePromises = tasks.map((t: any) =>
+    const updatePromises = tasks.map((t: { _id?: string; id?: string; displayOrder: number }) =>
       Task.updateOne(
         { _id: t._id || t.id, userId: user.clerkId },
         { $set: { displayOrder: t.displayOrder } }

@@ -338,7 +338,7 @@ export const getAIWeeklyReport = cache(async function getAIWeeklyReport(userId: 
 
   const rawSessions = await fetchRawAntiProcrastinationSessions(userId);
   const sessions = rawSessions.filter(
-    (s) => new Date(s.startedAt) >= sevenDaysAgo
+    (s) => s.startedAt && new Date(s.startedAt) >= sevenDaysAgo
   );
 
   if (sessions.length === 0) {
@@ -410,19 +410,27 @@ export const getAIWeeklyReport = cache(async function getAIWeeklyReport(userId: 
     totalSwitches += s.tabSwitches;
     totalBlurs += s.windowBlurEvents;
 
-    s.interruptionTimeline.forEach((t) => {
-      if (
-        t.event.toLowerCase().includes("exit") ||
-        t.event.toLowerCase().includes("switch") ||
-        t.event.toLowerCase().includes("blur")
-      ) {
-        interruptionElapseds.push(t.elapsed);
-        exitTimes.push(new Date(t.timestamp).getHours());
-      }
-      if (t.event === "Returned") {
-        returnCount++;
-      }
-    });
+    if (s.interruptionTimeline && Array.isArray(s.interruptionTimeline)) {
+      s.interruptionTimeline.forEach((t) => {
+        if (!t) return;
+        const eventName = t.event || "";
+        if (
+          eventName.toLowerCase().includes("exit") ||
+          eventName.toLowerCase().includes("switch") ||
+          eventName.toLowerCase().includes("blur")
+        ) {
+          if (t.elapsed !== undefined) {
+            interruptionElapseds.push(t.elapsed);
+          }
+          if (t.timestamp) {
+            exitTimes.push(new Date(t.timestamp).getHours());
+          }
+        }
+        if (eventName === "Returned") {
+          returnCount++;
+        }
+      });
+    }
   });
 
   // Determine Productive Day

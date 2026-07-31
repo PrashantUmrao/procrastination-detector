@@ -129,7 +129,7 @@ export async function PUT(req: Request) {
     await dbConnect();
 
     // Update each habit in the batch (matching ID and user)
-    const updatePromises = habits.map((h: any) =>
+    const updatePromises = habits.map((h: { _id?: string; id?: string; displayOrder: number }) =>
       Habit.updateOne(
         { _id: h._id || h.id, userId: user.clerkId },
         { $set: { displayOrder: h.displayOrder } }
