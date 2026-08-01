@@ -3,6 +3,7 @@ import { Orbitron, Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/components/providers/AuthProvider";
 import { ScrollProvider } from "@/components/providers/ScrollProvider";
+import { PWAProvider } from "@/components/providers/PWAProvider";
 import { getAuthUser, isDynamicError } from "@/lib/auth";
 import { Suspense } from "react";
 
@@ -28,6 +29,7 @@ export const viewport = {
 };
 
 export const metadata: Metadata = {
+  applicationName: "Procrastination Detector",
   title: {
     default: "Procrastination Detector | Beat Procrastination by Prashant Umrao",
     template: "%s | Procrastination Detector by Prashant Umrao",
@@ -51,6 +53,8 @@ export const metadata: Metadata = {
   ],
   authors: [{ name: "Prashant Umrao", url: "https://github.com/PrashantUmrao" }],
   creator: "Prashant Umrao",
+  publisher: "Prashant Umrao",
+  manifest: "/manifest.webmanifest",
   metadataBase: new URL("https://procrasti.prashantumrao.me"),
   alternates: {
     canonical: "/",
@@ -74,10 +78,24 @@ export const metadata: Metadata = {
     index: true,
     follow: true,
   },
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "Procrastination Detector",
+  },
+  formatDetection: {
+    telephone: false,
+    email: false,
+    address: false,
+  },
   icons: {
     icon: [
+      { url: "/favicon.ico", sizes: "any" },
       { url: "/favicon-32x32.png", sizes: "32x32", type: "image/png" },
       { url: "/favicon-16x16.png", sizes: "16x16", type: "image/png" },
+      { url: "/icon.png", sizes: "32x32", type: "image/png" },
+      { url: "/android-chrome-192x192.png", sizes: "192x192", type: "image/png" },
+      { url: "/android-chrome-512x512.png", sizes: "512x512", type: "image/png" },
     ],
     apple: [
       { url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" },
@@ -149,12 +167,14 @@ export default async function RootLayout({
           dangerouslySetInnerHTML={{ __html: JSON.stringify(globalOrgSchema) }}
         />
         <AuthProvider>
-          <ScrollProvider>
-            <Suspense fallback={null}>
-              <UserSync />
-            </Suspense>
-            {children}
-          </ScrollProvider>
+          <PWAProvider>
+            <ScrollProvider>
+              <Suspense fallback={null}>
+                <UserSync />
+              </Suspense>
+              {children}
+            </ScrollProvider>
+          </PWAProvider>
         </AuthProvider>
       </body>
     </html>

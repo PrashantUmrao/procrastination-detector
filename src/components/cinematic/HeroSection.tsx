@@ -2,7 +2,6 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import Image from "next/image";
-import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowRight } from "lucide-react";
 import { useUser, UserButton } from "@/components/providers/AuthProvider";
@@ -10,7 +9,6 @@ import Link from "next/link";
 import { gsap } from "gsap";
 
 export default function HeroSection() {
-  const router = useRouter();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const { isSignedIn } = useUser();

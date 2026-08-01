@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef } from "react";
 import { gsap } from "gsap";
 
 interface CinematicIntroProps {
@@ -9,6 +9,13 @@ interface CinematicIntroProps {
 
 interface ExtendedAudioContext extends AudioContext {
   masterGain?: GainNode;
+}
+
+function fillNoiseBuffer(buffer: AudioBuffer) {
+  const output = buffer.getChannelData(0);
+  for (let i = 0; i < buffer.length; i++) {
+    output[i] = Math.random() * 2 - 1;
+  }
 }
 
 export default function CinematicIntro({ onComplete }: CinematicIntroProps) {
@@ -89,10 +96,7 @@ export default function CinematicIntro({ onComplete }: CinematicIntroProps) {
 
       const bufferSize = ctx.sampleRate * 4; // 4 seconds of noise
       const noiseBuffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
-      const output = noiseBuffer.getChannelData(0);
-      for (let i = 0; i < bufferSize; i++) {
-        output[i] = Math.random() * 2 - 1;
-      }
+      fillNoiseBuffer(noiseBuffer);
 
       const noiseSource = ctx.createBufferSource();
       noiseSource.buffer = noiseBuffer;
