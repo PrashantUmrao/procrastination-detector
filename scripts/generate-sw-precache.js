@@ -5,6 +5,7 @@ const path = require("path");
 const WORKSPACE_DIR = path.resolve(__dirname, "..");
 const NEXT_STATIC_DIR = path.join(WORKSPACE_DIR, ".next", "static");
 const PUBLIC_DIR = path.join(WORKSPACE_DIR, "public");
+const SW_TEMPLATE_PATH = path.join(WORKSPACE_DIR, "scripts", "sw.template.js");
 const SW_PATH = path.join(PUBLIC_DIR, "sw.js");
 
 // Recursive file scanner
@@ -52,8 +53,8 @@ function generatePrecache() {
         "/apple-touch-icon.png",
         "/android-chrome-192x192.png",
         "/android-chrome-512x512.png",
-        "/maskable-icon-192x192.png",
-        "/maskable-icon-512x512.png",
+        "/maskable-icon-192.png",
+        "/maskable-icon-512.png",
         "/screenshot.png"
       ];
       if (alreadyPrecached.includes(file)) return false;
@@ -66,13 +67,13 @@ function generatePrecache() {
   const allAssets = [...nextStaticFiles, ...publicFiles];
   console.log(`Found ${allAssets.length} static assets to precache.`);
 
-  // 3. Update public/sw.js
-  if (!fs.existsSync(SW_PATH)) {
-    console.error(`Error: Service worker file not found at ${SW_PATH}`);
+  // 3. Update public/sw.js from template
+  if (!fs.existsSync(SW_TEMPLATE_PATH)) {
+    console.error(`Error: Service worker template file not found at ${SW_TEMPLATE_PATH}`);
     process.exit(1);
   }
 
-  let swContent = fs.readFileSync(SW_PATH, "utf8");
+  let swContent = fs.readFileSync(SW_TEMPLATE_PATH, "utf8");
 
   // Format assets array content
   const assetsString = allAssets.map(asset => `  "${asset}",`).join("\n");
@@ -84,7 +85,7 @@ function generatePrecache() {
     fs.writeFileSync(SW_PATH, swContent, "utf8");
     console.log("Service Worker precache list generated successfully!");
   } else {
-    console.warn("Warning: Could not find precache placeholder /* GENERATED_PRECACHE_ASSETS */ in sw.js.");
+    console.warn("Warning: Could not find precache placeholder /* GENERATED_PRECACHE_ASSETS */ in sw.template.js.");
   }
 }
 
